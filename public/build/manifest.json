@@ -1,0 +1,19 @@
+{
+  "public/images/back.png": {
+    "file": "assets/back.18582180.png",
+    "src": "public/images/back.png"
+  },
+  "resources/js/app.js": {
+    "file": "../public/build/assets/app.21977638.js",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "css": [
+      "../public/build/assets/app.ce6d29ae.css"
+    ]
+  },
+  "resources/scss/app.scss": {
+    "file": "../public/build/assets/app.ce6d29ae.css",
+    "src": "resources/scss/app.scss",
+    "isEntry": true
+  }
+}
