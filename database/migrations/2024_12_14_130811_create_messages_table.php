@@ -14,7 +14,7 @@ return new class extends Migration
             $table->text('wa_id');
             $table->smallInteger('source');
             $table->string('response')->nullable();
-            $table->string('tyspe');
+            $table->string('type');
 
             $table->timestamps();
         });
