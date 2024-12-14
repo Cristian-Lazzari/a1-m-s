@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
 
             $table->text('wa_id');
-            $table->smallInt('source');
+            $table->smallInteger('source');
             $table->string('response')->nullable();
             $table->string('tyspe');
 
