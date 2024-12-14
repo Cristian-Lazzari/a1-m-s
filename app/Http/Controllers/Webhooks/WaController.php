@@ -81,10 +81,10 @@ class WaController extends Controller
                 ]);
             }
     
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Errore nella richiesta.',
-            ], $response->status());
+            // return response()->json([
+            //     'status' => 'error',
+            //     'message' => 'Errore nella richiesta.',
+            // ], $response->status());
         
 
           
