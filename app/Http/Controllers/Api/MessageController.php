@@ -27,6 +27,8 @@ class MessageController extends Controller
         $message->source = $source->id;
 
         $message->save();
+
+        return $message
     }
 
 }
