@@ -28,7 +28,7 @@ class MessageController extends Controller
 
         $message->save();
 
-        return $message
+        return $message;
     }
 
 }
