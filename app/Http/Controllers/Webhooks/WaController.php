@@ -54,7 +54,7 @@ class WaController extends Controller
                 Log::info("Pulsante premuto(template): $buttonId, ID messaggio: $messageId");
             }
 
-            $message = Message::where('wa_id' , $data->source)->firstOrFail();
+            $message = Message::where('wa_id' , $data->messageId)->firstOrFail();
             if (!$message) {
                 Log::info("Nessun  Message : " . $messageId);
                 return;
