@@ -15,16 +15,16 @@ class MessageController extends Controller
         $data = $request->all();   
         Log::info("  Message : " , $data);
 
-        $source = Source::where('domain' , $data->source)->firstOrFail();
+        $source = Source::where('domain' , $data['source'])->firstOrFail();
         if (!$source) {
             $source = new Source();
-            $source->domain = $data->source;
+            $source->domain = $data['source'];
             $source->save();
         }
         $message = new Message();
         
-        $message->wa_id = $data->wa_id;
-        $message->type = $data->type;
+        $message->wa_id = $data['wa_id'];
+        $message->type = $data['type'];
         $message->source = $source->id;
 
         $message->save();
