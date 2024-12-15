@@ -13,8 +13,8 @@ class MessageController extends Controller
     public function getNewMex(Request $request)
     {
         $data = $request->all();   
-        Log::info("  Message : " , $data);
-
+        Log::info("  quanlcuno ha inviato un messaggio : " , $data);
+        
         $source = Source::where('domain' , $data['source'])->firstOrFail();
         if (!$source) {
             $source = new Source();
@@ -26,10 +26,11 @@ class MessageController extends Controller
         $message->wa_id = $data['wa_id'];
         $message->type = $data['type'];
         $message->source = $source->id;
-
+        
         $message->save();
-
+        
         return $data;
+        Log::info("  sorgente dopo save : " , $source);
     }
 
 }
