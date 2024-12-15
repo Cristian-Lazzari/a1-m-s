@@ -15,9 +15,9 @@ class MessageController extends Controller
         try {
             // Validazione dei dati in ingresso
             $validatedData = $request->validate([
-                'source' => 'required|string|max:255',
-                'wa_id' => 'required|string|max:255',
-                'type' => 'required|string|max:50'
+                'source' => 'required',
+                'wa_id' => 'required',
+                'type' => 'required',
             ]);
     
             // Log iniziale
