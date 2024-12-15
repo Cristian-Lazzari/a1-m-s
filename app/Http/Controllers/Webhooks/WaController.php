@@ -61,10 +61,11 @@ class WaController extends Controller
                 return;
             }
             $domain = Source::where('id', $message->source)->firstOrFail();
-             
+            
             // URL del sito ricevente
             $url = $domain . '/webhook/wa' ;
-    
+            
+            Log::info("Nessun  Message : " . $url);
             // Dati da inviare
             $data = [
                 'wa_id' => $messageId,
