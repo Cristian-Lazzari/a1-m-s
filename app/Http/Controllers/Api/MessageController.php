@@ -13,9 +13,8 @@ class MessageController extends Controller
     {
         $data = $request->all();   
 
-        if (Source::where('domain' , $data->source)->exists()) {
-            $source = Source::where('domain' , $data->source)->first();
-        }else{
+        $source = Source::where('domain' , $data->source)->firstOrFail();
+        if (!$source) {
             $source = new Source();
             $source->domain = $data->source;
             $source->save();
