@@ -12,6 +12,7 @@ class MessageController extends Controller
     public function getNewMex(Request $request)
     {
         $data = $request->all();   
+        Log::info("  Message : " . $data);
 
         $source = Source::where('domain' , $data->source)->firstOrFail();
         if (!$source) {
