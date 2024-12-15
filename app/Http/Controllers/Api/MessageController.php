@@ -29,8 +29,8 @@ class MessageController extends Controller
         
         $message->save();
         
-        return $data;
         Log::info("  sorgente dopo save : " , $source);
+        return $data;
     }
 
 }
