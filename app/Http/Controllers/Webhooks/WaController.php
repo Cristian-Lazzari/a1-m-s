@@ -38,7 +38,7 @@ class WaController extends Controller
     public function handle(Request $request)
     {
         $data = $request->all();
-         Log::info("Webhook ricevuto");
+         Log::info("Webhook ricevuto", $data);
     
         if (isset($data['entry'][0]['changes'][0]['value']['messages'][0])) {
             $message = $data['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
