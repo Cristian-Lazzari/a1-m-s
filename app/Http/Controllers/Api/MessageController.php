@@ -30,13 +30,17 @@ class MessageController extends Controller
                 ['domain' => $validatedData['source']] // Valori da inserire se non esiste
             );
             $mex = json_decode($validatedData['wa_id'], true);
+            $i = 1;
+            
             foreach ($mex as $id) {
                 // Creazione del nuovo messaggio
                 $message = new Message();
                 $message->wa_id = $id;
-                $message->type = $validatedData['type'];
+                $message->type = $i == 1 ? $validatedData['type_1'] : $validatedData['type_2'];
+                
                 $message->source = $source->id;
                 $message->save();
+                $i ++;
             } 
             // Ritorna i dati ricevuti
             return response()->json(['success' => true, 'data' => $validatedData], 200);
