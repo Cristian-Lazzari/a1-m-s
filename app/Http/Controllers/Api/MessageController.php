@@ -16,29 +16,28 @@ class MessageController extends Controller
             // Validazione dei dati in ingresso
             $validatedData = $request->validate([
                 'source' => 'required',
-                'wa_id' => 'required',
-                'type' => 'required',
+                'wa_id'  => 'required',
+                'type_1' => 'required',
+                'type_2' => 'required',
             ]);
     
             // Log iniziale
-            Log::info("Qualcuno ha inviato un messaggio:", $validatedData);
+            Log::info("Messaggio redistrato dal be:", $validatedData);
     
             // Controlla se esiste la sorgente, altrimenti la crea
             $source = Source::firstOrCreate(
                 ['domain' => $validatedData['source']],
                 ['domain' => $validatedData['source']] // Valori da inserire se non esiste
             );
-    
-            // Creazione del nuovo messaggio
-            $message = new Message();
-            $message->wa_id = $validatedData['wa_id'];
-            $message->type = $validatedData['type'];
-            $message->source = $source->id;
-            $message->save();
-    
-            // Log della sorgente dopo il salvataggio
-            Log::info("Sorgente dopo il salvataggio:", $source->toArray());
-    
+            $mex = json_decode($validatedData['wa_id'], true);
+            foreach ($mex as $id) {
+                // Creazione del nuovo messaggio
+                $message = new Message();
+                $message->wa_id = $id;
+                $message->type = $validatedData['type'];
+                $message->source = $source->id;
+                $message->save();
+            } 
             // Ritorna i dati ricevuti
             return response()->json(['success' => true, 'data' => $validatedData], 200);
         } catch (ValidationException $e) {

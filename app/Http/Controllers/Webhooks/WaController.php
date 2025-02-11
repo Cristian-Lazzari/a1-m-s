@@ -42,13 +42,14 @@ class WaController extends Controller
     
         if (isset($data['entry'][0]['changes'][0]['value']['messages'][0])) {
             $message = $data['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
+            $number = $message['from'] ?? 'non hai trovato il numero';
             $messageId = '';
             $buttonId = '';
             Log::info("messaggio:" , $message);
             if(isset($message['interactive'])){
                 $messageId = $data['entry'][0]['changes'][0]['value']['messages'][0]['context']['id'] ?? null;
                 $buttonId = $message['interactive']['button_reply']['id']; 
-                Log::info("Pulsante premuto: $buttonId, ID messaggio: $messageId");   
+                Log::info("Pulsante premuto(interactive): $buttonId, ID messaggio: $messageId");   
             }else {
                 $messageId = $message['context']['id'] ?? null;    
                 $buttonId = $message['button']['text']; 
@@ -68,6 +69,7 @@ class WaController extends Controller
             // Dati da inviare
             $data = [
                 'wa_id' => $messageId,
+                'number' => $number,
                 'response' => $buttonId == 'Conferma' ? 1 : 0,
             ];
     
@@ -81,17 +83,9 @@ class WaController extends Controller
                     'data' => $response->json(),
                 ]);
             }
-    
-            // return response()->json([
-            //     'status' => 'error',
-            //     'message' => 'Errore nella richiesta.',
-            // ], $response->status());
-        
-
-          
 
         } else {
-            //Log::info("Struttura del messaggio non valida o messaggio mancante.");
+            Log::info("Struttura del messaggio non valida o messaggio mancante.");
         }
 
         return response()->json(['status' => 'success']);
