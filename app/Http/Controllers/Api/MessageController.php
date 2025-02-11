@@ -22,7 +22,7 @@ class MessageController extends Controller
             ]);
     
             // Log iniziale
-            Log::info("Messaggio redistrato dal be:", $validatedData);
+            Log::info("Messaggio ricevuto dal be:", $validatedData);
     
             // Controlla se esiste la sorgente, altrimenti la crea
             $source = Source::firstOrCreate(
