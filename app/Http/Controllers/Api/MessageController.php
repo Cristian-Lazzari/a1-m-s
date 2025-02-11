@@ -13,6 +13,9 @@ class MessageController extends Controller
     public function getNewMex(Request $request)
     {
         try {
+            // Log dell'intera richiesta per debugging
+            Log::info("Richiesta ricevuta:", $request->all());
+    
             // Validazione dei dati in ingresso
             $validatedData = $request->validate([
                 'source' => 'required',
@@ -21,38 +24,47 @@ class MessageController extends Controller
                 'type_2' => 'required',
             ]);
     
-            // Log iniziale
-            Log::info("Messaggio ricevuto dal be:", $validatedData);
+            Log::info("Dati validati correttamente:", $validatedData);
     
             // Controlla se esiste la sorgente, altrimenti la crea
             $source = Source::firstOrCreate(
                 ['domain' => $validatedData['source']],
-                ['domain' => $validatedData['source']] // Valori da inserire se non esiste
+                ['domain' => $validatedData['source']]
             );
+    
+            // Decodifica wa_id e verifica se è valido
             $mex = json_decode($validatedData['wa_id'], true);
+            if (!is_array($mex)) {
+                throw new Exception("Il campo wa_id non è un JSON valido");
+            }
+    
+            Log::info("wa_id decodificato con successo:", ['wa_id' => $mex]);
+    
             $i = 1;
-            
             foreach ($mex as $id) {
-                // Creazione del nuovo messaggio
                 $message = new Message();
                 $message->wa_id = $id;
                 $message->type = $i == 1 ? $validatedData['type_1'] : $validatedData['type_2'];
-                
                 $message->source = $source->id;
                 $message->save();
-                $i ++;
-            } 
+                $i++;
+            }
+    
+            Log::info("Messaggi salvati con successo.");
+    
             // Ritorna i dati ricevuti
             return response()->json(['success' => true, 'data' => $validatedData], 200);
         } catch (ValidationException $e) {
-            // Gestione degli errori di validazione
             Log::error("Errore di validazione:", $e->errors());
             return response()->json(['success' => false, 'error' => $e->errors()], 422);
         } catch (Exception $e) {
-            // Gestione generica degli errori
-            Log::error("Errore nel salvataggio del messaggio:", ['message' => $e->getMessage()]);
+            Log::error("Errore nel salvataggio del messaggio:", [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['success' => false, 'error' => 'Si è verificato un errore. Riprova più tardi.'], 500);
         }
     }
+    
 
 }
