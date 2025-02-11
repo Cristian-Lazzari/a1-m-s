@@ -20,12 +20,12 @@ class DatabaseSeeder extends Seeder
      
 
         $this->call([
-            UsersTableSeeder::class,
+            // UsersTableSeeder::class,
             
-            //CategoriesTableSeeder::class,
-            ProductsTableSeeder::class,
-            PostsTableSeeder::class,
-            SettingsTableSeeder::class,
+            // //CategoriesTableSeeder::class,
+            // ProductsTableSeeder::class,
+            // PostsTableSeeder::class,
+            // SettingsTableSeeder::class,
         ]);
     }
 }
