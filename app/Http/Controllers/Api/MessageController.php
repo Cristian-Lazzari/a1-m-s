@@ -12,7 +12,8 @@ class MessageController extends Controller
 {
     public function getNewMex(Request $request)
     {
-        
+        return response()->json(['success' => true, 'data' => 'diomerda'], 200);
+        //return response()->json(['success' => true, 'data' => $validatedData], 200);
         
         Log::info("Richiesta ricevuta:", $request->all());
 
@@ -55,7 +56,7 @@ class MessageController extends Controller
         Log::info("Messaggi salvati con successo.");
 
         // Ritorna i dati ricevuti
-        return response()->json(['success' => true, 'data' => $validatedData], 200);
+       
 
         // } catch (ValidationException $e) {
         //     Log::error("Errore di validazione:", $e->errors());
