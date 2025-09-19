@@ -1,6 +1,33 @@
-<IfModule mod_rewrite.c>
-    RewriteEngine on
-    RewriteCond %{REQUEST_URI} !^public/
-    RewriteRule ^(.*)$ public/ [L] 
-    RewriteRule ^ index.php
+# -------------------------------
+# Disabilitare mod_evasive per API
+# -------------------------------
+<IfModule mod_evasive20.c>
+    <Location "/api">
+        DOSHashTableSize    3097
+        DOSPageCount        0
+        DOSSiteCount        0
+        DOSPageInterval     1
+        DOSSiteInterval     1
+        DOSBlockingPeriod   1
+    </Location>
+</IfModule>
+
+# -------------------------------
+# Disabilitare mod_security per API
+# -------------------------------
+<IfModule mod_security.c>
+    <Location "/api">
+        SecRuleEngine Off
+    </Location>
+</IfModule>
+
+# -------------------------------
+# Abilita CORS se serve per chiamate tra server
+# -------------------------------
+<IfModule mod_headers.c>
+    <Location "/api">
+        Header set Access-Control-Allow-Origin "*"
+        Header set Access-Control-Allow-Methods "POST, GET, OPTIONS"
+        Header set Access-Control-Allow-Headers "Content-Type, X-API-KEY"
+    </Location>
 </IfModule>
