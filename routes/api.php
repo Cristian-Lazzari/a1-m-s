@@ -6,7 +6,8 @@ use App\Http\Controllers\Api\MessageController;
 
 
 
-Route::post('messages', [MessageController::class, 'getNewMex'])->name('api.message.getNewMex');
+Route::post('messages', [MessageController::class, 'getNewMex'])->name('api.message.getNewMex')->withoutMiddleware([
+    'throttle:api']);
 
 
 
