@@ -3,9 +3,9 @@
 # --------------------------------------
 <IfModule mod_security.c>
     # Disabilita solo se la richiesta inizia con /api/
-    <If "%{REQUEST_URI} =~ m#^/api/#">
+   
         SecRuleEngine Off
-    </If>
+
 </IfModule>
 
 # --------------------------------------
@@ -28,10 +28,10 @@
 # --------------------------------------
 <IfModule mod_headers.c>
     # Applica solo alle richieste che iniziano con /api/
-    <If "%{REQUEST_URI} =~ m#^/api/#">
+   
         Header set Access-Control-Allow-Origin "*"
         Header set Access-Control-Allow-Methods "POST, GET, OPTIONS"
         Header set Access-Control-Allow-Headers "Content-Type, X-API-KEY"
-    </If>
+  
 </IfModule>
 
