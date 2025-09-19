@@ -12,11 +12,12 @@ class MessageController extends Controller
 {
     public function getNewMex(Request $request)
     {
-        //dd('ciao');
+        
         
         Log::info("Richiesta ricevuta:", $request->all());
 
         // Validazione dei dati in ingresso
+        //$validatedData = $request->all();
         $validatedData = $request->validate([
             'source' => 'required',
             'wa_id'  => 'required',
@@ -35,8 +36,9 @@ class MessageController extends Controller
         // Decodifica wa_id e verifica se è valido
         $mex = json_decode($validatedData['wa_id'], true);
         if (!is_array($mex)) {
-            throw new Exception("Il campo wa_id non è un JSON valido");
+            return response()->json(['success' => false, 'error' => 'Si è verificato un errore. Riprova più tardi.'], 500);
         }
+        //dd('ciao');
 
         Log::info("wa_id decodificato con successo:", ['wa_id' => $mex]);
 
