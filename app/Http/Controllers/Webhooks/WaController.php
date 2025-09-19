@@ -75,7 +75,7 @@ class WaController extends Controller
     
             // Invio della richiesta POST
             //$response = Http::post($url, $data);
-            $response = Http::withHeaders([ 'X-API-KEY' => config('c.X-API-KEY')])->post($url, $data);
+            $response = Http::withHeaders([ 'X-API-KEY' => config('configurazione.X-API-KEY')])->post($url, $data);
     
             // Gestione della risposta
             if ($response->successful()) {
