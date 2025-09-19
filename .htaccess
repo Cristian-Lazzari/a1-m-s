@@ -1,33 +1,37 @@
-# -------------------------------
-# Disabilitare mod_evasive per API
-# -------------------------------
-<IfModule mod_evasive20.c>
-    <Location "/api">
-        DOSHashTableSize    3097
-        DOSPageCount        0
-        DOSSiteCount        0
-        DOSPageInterval     1
-        DOSSiteInterval     1
-        DOSBlockingPeriod   1
-    </Location>
-</IfModule>
-
-# -------------------------------
-# Disabilitare mod_security per API
-# -------------------------------
+# --------------------------------------
+# Disabilitare mod_security per le API
+# --------------------------------------
 <IfModule mod_security.c>
-    <Location "/api">
+    # Disabilita solo se la richiesta inizia con /api/
+    <If "%{REQUEST_URI} =~ m#^/api/#">
         SecRuleEngine Off
-    </Location>
+    </If>
 </IfModule>
 
-# -------------------------------
-# Abilita CORS se serve per chiamate tra server
-# -------------------------------
+# --------------------------------------
+# Disabilitare mod_evasive per le API
+# --------------------------------------
+# Nota: su molti hosting condivisi non è possibile modificare mod_evasive via .htaccess.
+# Se Netson permette override, puoi provare:
+<IfModule mod_evasive20.c>
+    # impostazioni minime per non bloccare le API
+    DOSHashTableSize    3097
+    DOSPageCount        0
+    DOSSiteCount        0
+    DOSPageInterval     1
+    DOSSiteInterval     1
+    DOSBlockingPeriod   1
+</IfModule>
+
+# --------------------------------------
+# CORS header per le API (opzionale)
+# --------------------------------------
 <IfModule mod_headers.c>
-    <Location "/api">
+    # Applica solo alle richieste che iniziano con /api/
+    <If "%{REQUEST_URI} =~ m#^/api/#">
         Header set Access-Control-Allow-Origin "*"
         Header set Access-Control-Allow-Methods "POST, GET, OPTIONS"
         Header set Access-Control-Allow-Headers "Content-Type, X-API-KEY"
-    </Location>
+    </If>
 </IfModule>
+
