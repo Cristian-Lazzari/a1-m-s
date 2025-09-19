@@ -1,37 +1,6 @@
-# --------------------------------------
-# Disabilitare mod_security per le API
-# --------------------------------------
-<IfModule mod_security.c>
-    # Disabilita solo se la richiesta inizia con /api/
-   
-        SecRuleEngine Off
-
+<IfModule mod_rewrite.c>
+    RewriteEngine on
+    RewriteCond %{REQUEST_URI} !^public/
+    RewriteRule ^(.*)$ public/ [L] 
+    RewriteRule ^ index.php
 </IfModule>
-
-# --------------------------------------
-# Disabilitare mod_evasive per le API
-# --------------------------------------
-# Nota: su molti hosting condivisi non è possibile modificare mod_evasive via .htaccess.
-# Se Netson permette override, puoi provare:
-<IfModule mod_evasive20.c>
-    # impostazioni minime per non bloccare le API
-    DOSHashTableSize    3097
-    DOSPageCount        0
-    DOSSiteCount        0
-    DOSPageInterval     1
-    DOSSiteInterval     1
-    DOSBlockingPeriod   1
-</IfModule>
-
-# --------------------------------------
-# CORS header per le API (opzionale)
-# --------------------------------------
-<IfModule mod_headers.c>
-    # Applica solo alle richieste che iniziano con /api/
-   
-        Header set Access-Control-Allow-Origin "*"
-        Header set Access-Control-Allow-Methods "POST, GET, OPTIONS"
-        Header set Access-Control-Allow-Headers "Content-Type, X-API-KEY"
-  
-</IfModule>
-
