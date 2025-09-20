@@ -98,7 +98,7 @@ class WaController extends Controller
     
         DB::purge('dynamic'); // resetta eventuali connessioni precedenti con lo stesso nome
         config(['database.connections.dynamic' => $config]);
-        $data = $request->all();
+
 
         $number = $data['number'];
 
