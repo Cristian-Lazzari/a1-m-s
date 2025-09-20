@@ -16,6 +16,9 @@ return new class extends Migration
         Schema::create('sources', function (Blueprint $table) {
             $table->id();
             $table->string('db_name');
+            $table->string('host');
+            $table->string('username');
+            $table->string('token');
             $table->timestamps();
         });
     }
