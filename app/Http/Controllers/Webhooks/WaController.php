@@ -64,7 +64,7 @@ class WaController extends Controller
             $domain = Source::where('id', $message->source)->firstOrFail();
             $db_name = $domain->db_name;
             // URL del sito ricevente
-            $url = $correct_domain . '/webhook/wa' ;
+            //$url = $correct_domain . '/webhook/wa' ;
             
             // Dati da inviare
             $data = [
@@ -295,9 +295,21 @@ class WaController extends Controller
         }
         if($c_a == 1){
             if($order->status == 2){
-                $order->status = 1;
+                DB::connection('dynamic')
+                ->table('orders')
+                ->where('id', $order->id)
+                ->update([
+                    'status'=> 1,
+                    'updated_at' => now(),
+                ]);
             }elseif($order->status == 3){
-                $order->status = 5;
+                DB::connection('dynamic')
+                ->table('orders')
+                ->where('id', $order->id)
+                ->update([
+                    'status'=> 5,
+                    'updated_at' => now(),
+                ]);
             }
             $m = 'L\'ordine è stata confermato correttamente';
             $message = 'Grazie ' . $order->name . ' per aver ordinato da noi, ti confermiamo che il tuo ordine sarà pronto per il ' . $order->date_slot;    
@@ -319,7 +331,13 @@ class WaController extends Controller
                     $refund = Refund::create([
                         'payment_intent' => $order->checkout_session_id, // Questo è l'ID dell'intent di pagamento
                     ]);
-                    $order->status = 6;
+                    DB::connection('dynamic')
+                    ->table('orders')
+                    ->where('id', $order->id)
+                    ->update([
+                        'status'=> 6,
+                        'updated_at' => now(),
+                    ]);
                 } catch (\Exception $e) {
                     return response()->json(['error' => $e->getMessage()], 500);
                 }
@@ -327,7 +345,13 @@ class WaController extends Controller
             }elseif(in_array($order->status, [2, 1])){
                 $m = 'L\'ordine è stato annullato correttamente';
                 $message = 'Ci dispiace informarti che purtroppo il tuo ordine è stato annullato';
-                $order->status = 0;
+                DB::connection('dynamic')
+                ->table('orders')
+                ->where('id', $order->id)
+                ->update([
+                    'status'=> 0,
+                    'updated_at' => now(),
+                ]);
             }else{
                 $m = 'L\'ordine era già stato annullato!';
                 return; 
@@ -398,13 +422,17 @@ class WaController extends Controller
 
                 }
             }
+            DB::connection('dynamic')
+            ->table('dates')
+            ->where('id', $date->id)
+            ->update([
+                'reserving'=> json_encode($reserving),
+                'visible'  => json_encode($vis),
+                'updated_at' => now(),
+            ]);
 
-            $date->reserving = json_encode($reserving);
-            $date->visible = json_encode($vis);
-            $date->update();
-            
         }
-        $order->update();
+
         //new menu
         $product_r = [];
         foreach ($order->products as $p) {
@@ -487,7 +515,13 @@ class WaController extends Controller
             ->first();
         $property_adv = json_decode($adv_s->property, 1);
         if($c_a == 1){
-            $res->status = 1;
+            DB::connection('dynamic')
+            ->table('reservations')
+            ->where('id', $res->id)
+            ->update([
+                'status'=> 1,
+                'updated_at' => now(),
+            ]);
             $m = 'La prenotazione e\' stata confermata correttamente';
             $message = 'Siamo felici di informarti che la tua prenotazione e\' stata confermata, ti ricordo la data e l\'orario che hai scelto: ' . $res->date_slot ;
         }else{
@@ -512,31 +546,53 @@ class WaController extends Controller
                     $reserving['table_1'] = $reserving['table_1'] - $tot_p;
                     $date->reserving = json_encode($reserving);
                     $date->visible = json_encode($vis);
-                    $date->update();
+                    DB::connection('dynamic')
+                    ->table('dates')
+                    ->where('id', $date->id)
+                    ->update([
+                        'reserving'=> json_encode($reserving),
+                        'visible'  => json_encode($vis),
+                        'updated_at' => now(),
+                    ]);
                 }else{
                     if($vis['table_2'] == 0){
                         $vis['table_2'] = 1;
                     }
                     $reserving['table_2'] = $reserving['table_2'] - $tot_p;
-                    $date->reserving = json_encode($reserving);
-                    $date->visible = json_encode($vis);
-                    $date->update();
+                    DB::connection('dynamic')
+                    ->table('dates')
+                    ->where('id', $date->id)
+                    ->update([
+                        'reserving'=> json_encode($reserving),
+                        'visible'  => json_encode($vis),
+                        'updated_at' => now(),
+                    ]);
                 }
             }else{
                 if($vis['table'] == 0){
                     $vis['table'] = 1;
                 }
                 $reserving['table'] = $reserving['table'] - $tot_p;
-                $date->reserving = json_encode($reserving);
-                $date->visible = json_encode($vis);
-                $date->update();
+                DB::connection('dynamic')
+                ->table('dates')
+                ->where('id', $date->id)
+                ->update([
+                    'reserving'=> json_encode($reserving),
+                    'visible'  => json_encode($vis),
+                    'updated_at' => now(),
+                ]);
             }
 
-            $res->status = 0;
+            DB::connection('dynamic')
+            ->table('reservations')
+            ->where('id', $res->id)
+            ->update([
+                'status'=> 0,
+                'updated_at' => now(),
+            ]);
             $m = 'La prenotazione e\' stata annullata correttamente';
             $message = 'Ci spiace informarti che la tua prenotazione e\' stata annullata per la data e l\'orario che hai scelto... ' . $res->date_slot ;
         }
-        $res->update();
         
         $set = DB::connection('dynamic')
             ->table('settings')
