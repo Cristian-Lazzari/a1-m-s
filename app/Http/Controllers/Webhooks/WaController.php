@@ -497,7 +497,7 @@ class WaController extends Controller
         ];
 
         $mail = new confermaOrdineAdmin($bodymail);
-        Mail::to($order['email'])->send($mail);
+        Mail::to($order->email)->send($mail);
 
         return $m;
     }
@@ -627,7 +627,7 @@ class WaController extends Controller
        
         $mail = new confermaOrdineAdmin($bodymail);
 
-        Mail::to($res['email'])->send($mail);
+        Mail::to($res->email)->send($mail);
 
         return;   
     }
