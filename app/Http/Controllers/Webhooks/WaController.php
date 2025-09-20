@@ -65,8 +65,8 @@ class WaController extends Controller
                 Log::info("Nessun  Message : " . $messageId);
                 return;
             }
-            $domain = Source::where('id', $message->source)->firstOrFail();
-            $db_name = $domain->db_name;
+            $source = Source::where('id', $message->source)->firstOrFail();
+            $db_name = $source->db_name;
             // URL del sito ricevente
             //$url = $correct_domain . '/webhook/wa' ;
             
@@ -80,13 +80,13 @@ class WaController extends Controller
     
             // Invio della richiesta POST
             // $response = Http::post($url, $data);
-            $this->handle_p2($data);
+            $this->handle_p2($data, $source);
         } else {
             Log::info("Struttura del messaggio non valida o messaggio mancante.");
         }
     }
     // Metodo per gestire i webhook
-    protected function handle_p2($data)
+    protected function handle_p2($data, $source)
     {   
         $config = [
             'driver'    => 'mysql',
@@ -129,7 +129,7 @@ class WaController extends Controller
         $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         if ($order) {
             $status = $order->status;
-            $this->statusOrder($button_r, $order);
+            $this->statusOrder($button_r, $order, $source);
             if($button_r == 1 && in_array($status, [1, 5])){
                 return;
             }elseif($button_r == 0 && in_array($status, [0, 6])){
@@ -143,7 +143,7 @@ class WaController extends Controller
         } elseif ($reservation) {
             if ($reservation) {
                 $status = $reservation->status;
-                $this->statusRes($button_r, $reservation);
+                $this->statusRes($button_r, $reservation, $source);
                 if($button_r == 1 && in_array($status, [1, 5])){
                     return;
                 }elseif($button_r == 0 && in_array($status, [0, 6])){
@@ -288,7 +288,7 @@ class WaController extends Controller
         }
     }
     
-    protected function statusOrder($c_a, $order){
+    protected function statusOrder($c_a, $order, $source){
         Log::info("(WC) Inizio statusOrder");
         if($c_a == 1 && in_array($order->status, [1, 5])){
             return;
@@ -498,7 +498,7 @@ class WaController extends Controller
             'cart' => $cart_mail,
             'total_price' => $order->tot_price,
         ];
-        $message_x = Message::where('wa_id', $order->whatsapp_message_id)->first();
+        $message_x = Message::where('wa_id', )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         $set_mail = Source::where('id', $message_x->source)->first();
         // Crea un transport SwiftSMTP
         $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
@@ -515,7 +515,7 @@ class WaController extends Controller
 
         return $m;
     }
-    protected function statusRes($c_a, $res){
+    protected function statusRes($c_a, $res, $source){
         Log::info("(WC) Inizio statusRes");
         if($c_a == 1 && in_array($res->status, [1, 5])){
             return;
@@ -638,7 +638,7 @@ class WaController extends Controller
             'property_adv' => $property_adv,
         ];
         $message_x = Message::where('wa_id', $res->whatsapp_message_id)->first();
-        Log::info("message_xxxxxxx ricevuto", $message_x);
+
         $set_mail = Source::where('id', $message_x->source)->first();
         // Crea un transport SwiftSMTP
         $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
