@@ -122,8 +122,8 @@ class WaController extends Controller
         $button_r = $data['response'];
 
         //$order = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $order       = DB::connection('dynamic')->table('order'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $reservation = DB::connection('dynamic')->table('reservation')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        $order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         if ($order) {
             $status = $order->status;
             $this->statusOrder($button_r, $order);
