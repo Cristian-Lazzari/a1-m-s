@@ -15,7 +15,7 @@ return new class extends Migration
     {
         Schema::create('sources', function (Blueprint $table) {
             $table->id();
-            $table->string('domain');
+            $table->smallInteger('db_name');
             $table->timestamps();
         });
     }
