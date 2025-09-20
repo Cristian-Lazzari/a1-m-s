@@ -640,6 +640,7 @@ class WaController extends Controller
         $message_x = Message::where('wa_id', $res->whatsapp_message_id)->first();
         $set_mail = Source::where('id', $message_x->source)->first();
         // Crea un transport SwiftSMTP
+       
         $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
             ->setUsername($set_mail->username)
             ->setPassword($set_mail->token);
