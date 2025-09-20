@@ -9,15 +9,15 @@ use Illuminate\Queue\SerializesModels;
 class confermaOrdineAdmin extends Mailable
 {
     use Queueable, SerializesModels;
-        public $bodymail;
+        public $content_mail;
         public $fromAddress;
         public $fromName;
 
   
 
-    public function __construct($bodymail, $fromAddress, $fromName = null)
+    public function __construct($content_mail, $fromAddress, $fromName = null)
     {
-        $this->bodymail = $bodymail;
+        $this->content_mail = $content_mail;
         $this->fromAddress = $fromAddress;
         $this->fromName = $fromName ?? 'Default Sender';
     }
@@ -27,7 +27,7 @@ class confermaOrdineAdmin extends Mailable
         return $this->from($this->fromAddress, $this->fromName)
             ->subject('Conferma Ordine')
             ->view('emails.confermaOrderAdmin')
-            ->with(['bodymail' => $this->bodymail]);
+            ->with(['content_mail' => $this->content_mail]);
     }
 
 
