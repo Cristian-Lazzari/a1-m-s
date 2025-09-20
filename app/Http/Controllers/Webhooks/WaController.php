@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Webhooks;
 
+use Swift_Mailer;
 use Carbon\Carbon;
 use Stripe\Refund;
 use Stripe\Stripe;
@@ -10,6 +11,7 @@ use App\Models\Order;
 use App\Models\Source;
 use App\Models\Message;
 use App\Models\Setting;
+use Swift_SmtpTransport;
 use App\Models\Reservation;
 use App\Models\OrderProduct;
 use Illuminate\Http\Request;
@@ -20,8 +22,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
-use Swift_SmtpTransport;
-use Swift_Mailer;
 
 class WaController extends Controller
 {
@@ -498,7 +498,7 @@ class WaController extends Controller
             'cart' => $cart_mail,
             'total_price' => $order->tot_price,
         ];
-        $arr_mail = Message::where('whatsapp_message_id', $order->whatsapp_message_id)->first();
+        $arr_mail = Message::where('wa_id', $order->whatsapp_message_id)->first();
         $set_mail = Source::where('id', $arr_mail->whatsapp_message_id)->first();
         // Crea un transport SwiftSMTP
         $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
@@ -637,7 +637,7 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
-        $arr_mail = Message::where('whatsapp_message_id', $res->whatsapp_message_id)->first();
+        $arr_mail = Message::where('wa_id', $res->whatsapp_message_id)->first();
         $set_mail = Source::where('id', $arr_mail->whatsapp_message_id)->first();
         // Crea un transport SwiftSMTP
         $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
