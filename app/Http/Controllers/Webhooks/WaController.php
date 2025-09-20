@@ -658,5 +658,25 @@ class WaController extends Controller
             return false; // Se il record non esiste o la data non è impostata
         }
     }
+    protected function updateLastResponseWa($c)
+    {
+        $setting = DB::connection('dynamic')->table('settings')->where('name', 'wa')->first();
+        $property = json_decode($setting->property, true);
+        $now = Carbon::now();
+        if($c < 2){
+            $property['last_response_wa_1'] = $now;
+        }else {
+            $property['last_response_wa_1'] = $now;
+
+        }
+        DB::connection('dynamic')
+            ->table('settings')
+            ->where('name','wa')
+            ->update([
+                'property'=> json_encode($property),
+                'updated_at' => now(),
+            ]);
+        
+    }
 
 }
