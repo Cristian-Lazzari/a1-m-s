@@ -498,12 +498,11 @@ class WaController extends Controller
             'cart' => $cart_mail,
             'total_price' => $order->tot_price,
         ];
-        $message_x = Message::where('wa_id', )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $set_mail = Source::where('id', $message_x->source)->first();
+       
         // Crea un transport SwiftSMTP
-        $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
-            ->setUsername($set_mail->username)
-            ->setPassword($set_mail->token);
+        $transport = (new Swift_SmtpTransport($source->host, 587, 'tls'))
+            ->setUsername($source->username)
+            ->setPassword($source->token);
         
         $mailer = new Swift_Mailer($transport);
 
@@ -637,13 +636,11 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
-        $message_x = Message::where('wa_id', $res->whatsapp_message_id)->first();
-
-        $set_mail = Source::where('id', $message_x->source)->first();
+        
         // Crea un transport SwiftSMTP
-        $transport = (new Swift_SmtpTransport($set_mail->host, 587, 'tls'))
-            ->setUsername($set_mail->username)
-            ->setPassword($set_mail->token);
+        $transport = (new Swift_SmtpTransport($source->host, 587, 'tls'))
+            ->setUsername($source->username)
+            ->setPassword($source->token);
         
         $mailer = new Swift_Mailer($transport);
 
