@@ -22,6 +22,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 
 class WaController extends Controller
 {
@@ -636,19 +637,35 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
-        
-        // Crea un transport SwiftSMTP
-        $transport = (new Swift_SmtpTransport($source->host, 587, 'tls'))
-            ->setUsername($source->username)
-            ->setPassword($source->token);
-        
-        $mailer = new Swift_Mailer($transport);
 
-        // Inietti il mailer in Laravel
-        Mail::mailer('smtp')->setSwiftMailer($mailer);
+                // Crea un transport dinamico
+        config([
+            'mail.mailers.smtp.host' => $source->host,
+            'mail.mailers.smtp.port' => 587,
+            'mail.mailers.smtp.encryption' => 'tsl',
+            'mail.mailers.smtp.username' => $source->username,
+            'mail.mailers.smtp.password' => $source->password,
+            // 'mail.from.address' => $source->from_address,
+            // 'mail.from.name' => $source->from_name,
+        ]);
 
+        // Usa il tuo Mailable esistente
         $mail = new confermaOrdineAdmin($bodymail);
-        Mail::to($res->email)->send($mail);
+
+        // Invia passando dal mailer smtp appena configurato
+        Mail::mailer('smtp')->to($res->email)->send($mail);
+
+        // // Invia l'email
+        // $email = (new Email())
+        //     ->from($username)
+        //     ->to('destinatario@example.com')
+        //     ->subject('Test dinamico')
+        //     ->text('Test dinamico con account SMTP');
+
+        // $mailer->send($email);
+
+        // $mail = new confermaOrdineAdmin($bodymail);
+        // Mail::to($res->email)->send($mail);
         return;   
     }
 
