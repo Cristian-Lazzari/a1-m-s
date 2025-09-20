@@ -19,6 +19,9 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
+use Swift_SmtpTransport;
+use Swift_Mailer;
 
 class WaController extends Controller
 {
@@ -495,6 +498,16 @@ class WaController extends Controller
             'cart' => $cart_mail,
             'total_price' => $order->tot_price,
         ];
+        $arr_mail = Message::where('whatsapp_message_id', $order->whatsapp_message_id)->first();
+        // Crea un transport SwiftSMTP
+        $transport = (new Swift_SmtpTransport($arr_mail->host, 587, 'tls'))
+            ->setUsername($arr_mail->username)
+            ->setPassword($arr_mail->password);
+        
+        $mailer = new Swift_Mailer($transport);
+
+        // Inietti il mailer in Laravel
+        Mail::mailer('smtp')->setSwiftMailer($mailer);
 
         $mail = new confermaOrdineAdmin($bodymail);
         Mail::to($order->email)->send($mail);
@@ -623,12 +636,19 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
+        $arr_mail = Message::where('whatsapp_message_id', $res->whatsapp_message_id)->first();
+        // Crea un transport SwiftSMTP
+        $transport = (new Swift_SmtpTransport($arr_mail->host, 587, 'tls'))
+            ->setUsername($arr_mail->username)
+            ->setPassword($arr_mail->password);
+        
+        $mailer = new Swift_Mailer($transport);
 
-       
+        // Inietti il mailer in Laravel
+        Mail::mailer('smtp')->setSwiftMailer($mailer);
+
         $mail = new confermaOrdineAdmin($bodymail);
-
         Mail::to($res->email)->send($mail);
-
         return;   
     }
 
