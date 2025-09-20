@@ -645,7 +645,7 @@ class WaController extends Controller
             'mail.mailers.smtp.encryption' => 'tsl',
             'mail.mailers.smtp.username' => $source->username,
             'mail.mailers.smtp.password' => $source->password,
-            // 'mail.from.address' => $source->from_address,
+            'mail.from.address' => $source->from_address,
             // 'mail.from.name' => $source->from_name,
         ]);
 

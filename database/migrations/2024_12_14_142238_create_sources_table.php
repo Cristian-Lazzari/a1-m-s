@@ -19,6 +19,8 @@ return new class extends Migration
             $table->string('host');
             $table->string('username');
             $table->string('token');
+            $table->string('mail_from_address');
+            $table->string('app_name');
             $table->timestamps();
         });
     }
