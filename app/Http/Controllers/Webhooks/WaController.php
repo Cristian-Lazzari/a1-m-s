@@ -639,20 +639,28 @@ class WaController extends Controller
         ];
 
                 // Crea un transport dinamico
-        config([
-            'mail.mailers.smtp.host' => $source->host,
-            'mail.mailers.smtp.port' => 587,
-            'mail.mailers.smtp.encryption' => 'tls',
-            'mail.mailers.smtp.username' => $source->username,
-            'mail.mailers.smtp.password' => $source->password,
-            'mail.from.address' => $source->from_address,
-            'mail.from.name' => $source->from_name,
-        ]);
+        // config([
+        //     'mail.mailers.smtp.host' => $source->host,
+        //     'mail.mailers.smtp.port' => 587,
+        //     'mail.mailers.smtp.encryption' => 'tls',
+        //     'mail.mailers.smtp.username' => $source->username,
+        //     'mail.mailers.smtp.password' => $source->password,
+        //     'mail.from.address' => $source->from_address,
+        //     'mail.from.name' => $source->from_name,
+        // ]);
 
-        // Usa il tuo Mailable esistente
-        $mail = new confermaOrdineAdmin($bodymail);
+        // // Usa il tuo Mailable esistente
+        // $mail = new confermaOrdineAdmin($bodymail);
 
-        // Invia passando dal mailer smtp appena configurato
+        // // Invia passando dal mailer smtp appena configurato
+        // Mail::mailer('smtp')->to($res->email)->send($mail);
+    
+        $mail = new \App\Mail\confermaOrdineAdmin(
+            $bodymail,
+            $source->from_address,
+            $source->from_name
+        );
+
         Mail::mailer('smtp')->to($res->email)->send($mail);
 
         // // Invia l'email

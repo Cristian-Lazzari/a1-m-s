@@ -9,26 +9,27 @@ use Illuminate\Queue\SerializesModels;
 class confermaOrdineAdmin extends Mailable
 {
     use Queueable, SerializesModels;
-    public $content_mail;
+        public $bodymail;
+        public $fromAddress;
+        public $fromName;
 
+  
 
-    /**
-     * Create a new message instance.
-     *
-     * @return void
-     */
-    public function __construct($content_mail)
+    public function __construct($bodymail, $fromAddress, $fromName = null)
     {
-        $this->content_mail = $content_mail;
-
+        $this->bodymail = $bodymail;
+        $this->fromAddress = $fromAddress;
+        $this->fromName = $fromName ?? 'Default Sender';
     }
-
 
     public function build()
     {
-        return $this->subject('Notifica da ' . config('configurazione.name'))
-            ->view('emails.confermaOrderAdmin');
+        return $this->from($this->fromAddress, $this->fromName)
+            ->subject('Conferma Ordine')
+            ->view('emails.confermaOrderAdmin')
+            ->with(['bodymail' => $this->bodymail]);
     }
+
 
     /**
      * Get the attachments for the message.
