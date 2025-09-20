@@ -642,11 +642,11 @@ class WaController extends Controller
         config([
             'mail.mailers.smtp.host' => $source->host,
             'mail.mailers.smtp.port' => 587,
-            'mail.mailers.smtp.encryption' => 'tsl',
+            'mail.mailers.smtp.encryption' => 'tls',
             'mail.mailers.smtp.username' => $source->username,
             'mail.mailers.smtp.password' => $source->password,
             'mail.from.address' => $source->from_address,
-            // 'mail.from.name' => $source->from_name,
+            'mail.from.name' => $source->from_name,
         ]);
 
         // Usa il tuo Mailable esistente
