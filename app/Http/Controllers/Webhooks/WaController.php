@@ -648,14 +648,36 @@ class WaController extends Controller
             'mail.from.address' => $source->from_address,
             'mail.from.name' => $source->from_name,
         ]);
+        // Config dinamica
+        config([
+            'mail.mailers.dynamic' => [
+                'transport' => 'smtp',
+                'host' => $source->host,
+                'port' => 587,
+                'encryption' => 'tls',
+                'username' => $source->username,
+                'password' => $source->token,
+            ],
+            'mail.from.address' => $source->from_address,
+            'mail.from.name' => $source->from_name,
+        ]);
+
+        // Invio
+        Mail::mailer('dynamic')
+            ->to($res->email)
+            ->send(
+                (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
+                ->from($source->from_address, $source->from_name) // forza From
+            );
 
         
-        Mail::mailer('smtp')
-        ->to($res->email)
-        ->send(
-            (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
-            ->from($source->from_address, $source->from_name) // 👈 qui
-        );
+        
+        // Mail::mailer('smtp')
+        // ->to($res->email)
+        // ->send(
+        //     (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
+        //     ->from($source->from_address, $source->from_name) // 👈 qui
+        // );
         
         // // Usa il tuo Mailable esistente
         // $mail = new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name);
