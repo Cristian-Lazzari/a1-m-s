@@ -299,6 +299,7 @@ class WaController extends Controller
     
     protected function statusOrder($c_a, $order, $source){
         Log::info("(WC) Inizio statusOrder");
+         Log::info("(WC)L' ordine: " . $order->tojson());
         if($c_a == 1 && in_array($order->status, [1, 5])){
             return;
         }elseif($c_a == 0 && in_array($order->status, [0, 6])){
