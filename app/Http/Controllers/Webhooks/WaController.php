@@ -124,9 +124,17 @@ class WaController extends Controller
 
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
-
+        $order = DB::connection('dynamic')
+            ->table('orders')
+            ->join('order_product', 'orders.id', '=', 'order_product.order_id')
+            ->join('products', 'order_product.product_id', '=', 'products.id')
+            ->join('ingredient_product', 'products.id', '=', 'ingredient_product.product_id')
+            ->join('ingredients', 'ingredient_product.ingredient_id', '=', 'ingredients.id')
+            ->where('orders.whatsapp_message_id', 'like', '%' . $messageId . '%')
+            ->select('orders.*', 'products.*', 'ingredients.*')
+            ->first();
         //$order = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        //$order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         if ($order) {
             $status = $order->status;
@@ -643,20 +651,29 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
- // Crea un transport dinamico
-        config()->set([
-            "mail.mailers.smtp.host"       => $source->host,
-            "mail.mailers.smtp.port"       => 465,
-            "mail.mailers.smtp.username"   => $source->username,
-            "mail.mailers.smtp.password"   => $source->token,
-            "mail.mailers.smtp.encryption" => 'ssl',
-            "mail.mailers.smtp.from.address"=> $source->username,
-            "mail.mailers.smtp.from.name"   => $source->app_name,
-        ]);
+        try {
+            // Config dinamica SMTP
+            config()->set([
+                "mail.mailers.smtp.host"       => $source->host,
+                "mail.mailers.smtp.port"       => 465,
+                "mail.mailers.smtp.username"   => $source->username,
+                "mail.mailers.smtp.password"   => $source->token,
+                "mail.mailers.smtp.encryption" => 'ssl',
+                "mail.mailers.smtp.from.address"=> $source->username,
+                "mail.mailers.smtp.from.name"   => $source->app_name,
+            ]);
 
-        // // Invio
-        Mail::mailer('smtp')->to($res->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
+            // Invio mail
+            Mail::mailer('smtp')->to($res->email)
+                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name));
 
+            Log::info("Email inviata correttamente a {$res->email} da {$source->username}");
+
+        } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
+            Log::error("Errore SMTP: ".$e->getMessage());
+        } catch (\Exception $e) {
+            Log::error("Errore generico invio mail: ".$e->getMessage());
+        }
 
         return;   
     }
