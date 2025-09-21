@@ -260,10 +260,10 @@
     <div style="margin: 50px auto 0; background-color: #04001d; color: white; padding: 10px; text-align: center; font-size: 12px;">
         @if ($content_mail['to'] == 'user' && $content_mail['status'] !== 0)
             <p style="color: #ffffff; font-size: 12px; line-height: 1.5; margin: 5px;">
-                Contatta {{config('configurazione.APP_NAME')}} se desideri annullare o modificare la tua prenotazione:
+                Contatta {{$content_mail['app_name']}} se desideri annullare o modificare la tua prenotazione:
             </p>
             <p style="color: #ffffff; line-height: 1.5; margin: 15px;">
-                <a href="tel:{{$content_mail['admin_phone']}}" style="background-color: #ffffff; color: rgb(0, 0, 0); padding: 8px 12px; text-align: center; text-decoration: none; border-radius: 8px; font-size: 18px;">Chiama {{config('configurazione.APP_NAME')}}</a>
+                <a href="tel:{{$content_mail['admin_phone']}}" style="background-color: #ffffff; color: rgb(0, 0, 0); padding: 8px 12px; text-align: center; text-decoration: none; border-radius: 8px; font-size: 18px;">Chiama {{$content_mail['app_name']}}</a>
             </p>
         @endif
         <p style="color: #ffffff; font-size: 12px; line-height: 1.5; margin: 5px;">&copy; 2025 {{ $content_mail['app_name'] }}. Tutti i diritti riservati.</p>
