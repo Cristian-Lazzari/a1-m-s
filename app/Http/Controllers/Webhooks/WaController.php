@@ -640,39 +640,19 @@ class WaController extends Controller
 
 
 
-
-
-        // Nome univoco per questa sorgente
-        $mailerName = 'dynamic_' . uniqid();
-
-        config([
-            "mail.mailers.$mailerName" => [
-                'transport' => 'smtp',
-                'host' => $source->host,
-                'port' => 465,
-                'encryption' => 'tls',
-                'username' => $source->username,
-                'password' => $source->token,
-            ],
+ // Crea un transport dinamico
+        config()->set([
+            "mail.mailers.smtp.host"       => $source->host,
+            "mail.mailers.smtp.port"       => 465,
+            "mail.mailers.smtp.username"   => $source->username,
+            "mail.mailers.smtp.password"   => $source->token,
+            "mail.mailers.smtp.encryption" => 'ssl',
+            "mail.mailers.smtp.from.address"=> $source->mail_from_address,
+            "mail.mailers.smtp.from.name"   => $source->app_name,
         ]);
 
-        Mail::mailer($mailerName)
-            ->raw('Test corpo', function ($message) use ($source, $res) {
-                $message->to($res->email)
-                        ->from($source->from_address, $source->from_name)
-                        ->subject('Test dinamico');
-            });
+       // Mail::mailer('smtp')->to($res->email)->send($mail);
 
-                // Crea un transport dinamico
-        // config([
-        //     'mail.mailers.smtp.host' => $source->host,
-        //     'mail.mailers.smtp.port' => 465,
-        //     'mail.mailers.smtp.encryption' => 'tls',
-        //     'mail.mailers.smtp.username' => $source->username,
-        //     'mail.mailers.smtp.password' => $source->token,
-        //     'mail.from.address' => $source->from_address,
-        //     'mail.from.name' => $source->from_name,
-        // ]);
         /// Config dinamica
         // config([
         //     'mail.mailers.dynamic' => [
@@ -688,12 +668,7 @@ class WaController extends Controller
         // ]);
 
         // // Invio
-        // Mail::mailer('dynamic')
-        //     ->to($res->email)
-        //     ->send(
-        //         (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
-        //         ->from($source->from_address, $source->from_name) // forza From
-        //     );
+        Mail::mailer('smpt')->to($res->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
 
         
         
