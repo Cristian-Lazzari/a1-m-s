@@ -494,6 +494,8 @@ class WaController extends Controller
             'address' => $order->address,
             'address_n' => $order->address_n,
 
+            'app_url' => $source->app_url,
+            'app_name' => $source->app_name,
             
             'status' => $order->status,
             'cart' => $cart_mail,
@@ -507,7 +509,7 @@ class WaController extends Controller
             "mail.mailers.smtp.username"   => $source->username,
             "mail.mailers.smtp.password"   => $source->token,
             "mail.mailers.smtp.encryption" => 'ssl',
-            "mail.mailers.smtp.from.address"=> $source->mail_from_address,
+            "mail.mailers.smtp.from.address"=> $source->username,
             "mail.mailers.smtp.from.name"   => $source->app_name,
         ]);
 
@@ -631,6 +633,9 @@ class WaController extends Controller
             'sala' => $res->sala,
             'phone' => $res->phone,
             'admin_phone' => $p_set['telefono'],
+
+            'app_url' => $source->app_url,
+            'app_name' => $source->app_name,
             
             'whatsapp_message_id' => $res->whatsapp_message_id,
             'n_person' => $res->n_person,
@@ -645,7 +650,7 @@ class WaController extends Controller
             "mail.mailers.smtp.username"   => $source->username,
             "mail.mailers.smtp.password"   => $source->token,
             "mail.mailers.smtp.encryption" => 'ssl',
-            "mail.mailers.smtp.from.address"=> $source->mail_from_address,
+            "mail.mailers.smtp.from.address"=> $source->username,
             "mail.mailers.smtp.from.name"   => $source->app_name,
         ]);
 
