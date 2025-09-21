@@ -124,33 +124,34 @@ class WaController extends Controller
 
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
-        $order = DB::connection('dynamic')
-            ->table('orders')
-            ->join('order_product', 'orders.id', '=', 'order_product.order_id')
-            ->join('products', 'order_product.product_id', '=', 'products.id')
-            ->join('ingredient_product', 'products.id', '=', 'ingredient_product.product_id')
-            ->join('ingredients', 'ingredient_product.ingredient_id', '=', 'ingredients.id')
-            ->where('orders.whatsapp_message_id', 'like', '%' . $messageId . '%')
-            ->select('orders.*', 'products.*', 'ingredients.*')
-            ->get();
+        // $order = DB::connection('dynamic')
+        //     ->table('orders')
+        //     ->join('order_product', 'orders.id', '=', 'order_product.order_id')
+        //     ->join('products', 'order_product.product_id', '=', 'products.id')
+        //     ->join('ingredient_product', 'products.id', '=', 'ingredient_product.product_id')
+        //     ->join('ingredients', 'ingredient_product.ingredient_id', '=', 'ingredients.id')
+        //     ->where('orders.whatsapp_message_id', 'like', '%' . $messageId . '%')
+        //     ->select('orders.*', 'products.*', 'ingredients.*')
+        //     ->get();
         //$order = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         //$order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        if ($order) {
-            Log::info("(WC)L' ordine: " . json_encode($order));
-            $status = $order->status;
-            $this->statusOrder($button_r, $order, $source);
-            if($button_r == 1 && in_array($status, [1, 5])){
-                return;
-            }elseif($button_r == 0 && in_array($status, [0, 6])){
-                return;
-            }elseif(in_array($status, [1, 5, 0, 6])){
-                return;
-            }
-            if ($co_work) {
-                $this->message_co_worker(1, $button_r, $p, $order, $number_correct);
-            }
-        } elseif ($reservation) {
+        // if ($order) {
+        //     Log::info("(WC)L' ordine: " . json_encode($order));
+        //     $status = $order->status;
+        //     $this->statusOrder($button_r, $order, $source);
+        //     if($button_r == 1 && in_array($status, [1, 5])){
+        //         return;
+        //     }elseif($button_r == 0 && in_array($status, [0, 6])){
+        //         return;
+        //     }elseif(in_array($status, [1, 5, 0, 6])){
+        //         return;
+        //     }
+        //     if ($co_work) {
+        //         $this->message_co_worker(1, $button_r, $p, $order, $number_correct);
+        //     }
+        // } else
+        if ($reservation) {
             if ($reservation) {
                 $status = $reservation->status;
                 $this->statusRes($button_r, $reservation, $source);
