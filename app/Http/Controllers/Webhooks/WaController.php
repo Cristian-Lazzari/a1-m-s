@@ -668,7 +668,7 @@ class WaController extends Controller
         // ]);
 
         // // Invio
-        Mail::mailer('smpt')->to($res->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
+        Mail::mailer('smtp')->to($res->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
 
         
         
