@@ -161,7 +161,7 @@ class WaController extends Controller
             Log::info("(WC) Nessun ordine o prenotazione trovati per il Message ID: " . $messageId);
         }
       
-        return response()->json(['status' => 'success']);
+        return;
     }
 
     protected function message_co_worker($o_r, $c_a, $p, $or_res, $number){
@@ -638,22 +638,50 @@ class WaController extends Controller
             'property_adv' => $property_adv,
         ];
 
+
+
+
+
+        // Nome univoco per questa sorgente
+        $mailerName = 'dynamic_' . uniqid();
+
+        // Config dinamica
+        config([
+            "mail.mailers.$mailerName" => [
+                'transport' => 'smtp',
+                'host' => $source->host,
+                'port' => 465,
+                'encryption' => 'tls',
+                'username' => $source->username,
+                'password' => $source->token,
+                'timeout' => null,
+                'auth_mode' => null,
+            ],
+            'mail.from.address' => $source->from_address,
+            'mail.from.name' => $source->from_name,
+        ]);
+
+        // Invio usando il mailer dinamico
+        Mail::mailer($mailerName)
+            ->to($res->email)
+            ->send(new confermaOrdineAdmin($bodymail , $source->from_address, $source->from_name));
+
                 // Crea un transport dinamico
         // config([
         //     'mail.mailers.smtp.host' => $source->host,
-        //     'mail.mailers.smtp.port' => 587,
+        //     'mail.mailers.smtp.port' => 465,
         //     'mail.mailers.smtp.encryption' => 'tls',
         //     'mail.mailers.smtp.username' => $source->username,
         //     'mail.mailers.smtp.password' => $source->token,
         //     'mail.from.address' => $source->from_address,
         //     'mail.from.name' => $source->from_name,
         // ]);
-        // Config dinamica
+        /// Config dinamica
         // config([
         //     'mail.mailers.dynamic' => [
         //         'transport' => 'smtp',
         //         'host' => $source->host,
-        //         'port' => 587,
+        //         'port' => 465,
         //         'encryption' => 'tls',
         //         'username' => $source->username,
         //         'password' => $source->token,
