@@ -649,11 +649,18 @@ class WaController extends Controller
             'mail.from.name' => $source->from_name,
         ]);
 
-        // Usa il tuo Mailable esistente
-        $mail = new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name);
-
-        // Invia passando dal mailer smtp appena configurato
-        Mail::mailer('smtp')->to($res->email)->send($mail);
+        
+        Mail::mailer('smtp')
+        ->to($res->email)
+        ->send(
+            (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
+            ->from($source->from_address, $source->from_name) // 👈 qui
+        );
+        
+        // // Usa il tuo Mailable esistente
+        // $mail = new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name);
+        // // Invia passando dal mailer smtp appena configurato
+        // Mail::mailer('smtp')->to($res->email)->send($mail);
 
         return;   
     }
