@@ -500,18 +500,19 @@ class WaController extends Controller
             'total_price' => $order->tot_price,
         ];
        
-        // Crea un transport SwiftSMTP
-        $transport = (new Swift_SmtpTransport($source->host, 587, 'tls'))
-            ->setUsername($source->username)
-            ->setPassword($source->token);
-        
-        $mailer = new Swift_Mailer($transport);
+         // Crea un transport dinamico
+        config()->set([
+            "mail.mailers.smtp.host"       => $source->host,
+            "mail.mailers.smtp.port"       => 465,
+            "mail.mailers.smtp.username"   => $source->username,
+            "mail.mailers.smtp.password"   => $source->token,
+            "mail.mailers.smtp.encryption" => 'ssl',
+            "mail.mailers.smtp.from.address"=> $source->mail_from_address,
+            "mail.mailers.smtp.from.name"   => $source->app_name,
+        ]);
 
-        // Inietti il mailer in Laravel
-        Mail::mailer('smtp')->setSwiftMailer($mailer);
-
-        $mail = new confermaOrdineAdmin($bodymail);
-        Mail::to($order->email)->send($mail);
+        // // Invio
+        Mail::mailer('smtp')->to($order->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
 
         return $m;
     }
@@ -637,9 +638,6 @@ class WaController extends Controller
             
             'property_adv' => $property_adv,
         ];
-
-
-
  // Crea un transport dinamico
         config()->set([
             "mail.mailers.smtp.host"       => $source->host,
@@ -651,38 +649,9 @@ class WaController extends Controller
             "mail.mailers.smtp.from.name"   => $source->app_name,
         ]);
 
-       // Mail::mailer('smtp')->to($res->email)->send($mail);
-
-        /// Config dinamica
-        // config([
-        //     'mail.mailers.dynamic' => [
-        //         'transport' => 'smtp',
-        //         'host' => $source->host,
-        //         'port' => 465,
-        //         'encryption' => 'tls',
-        //         'username' => $source->username,
-        //         'password' => $source->token,
-        //     ],
-        //     'mail.from.address' => $source->from_address,
-        //     'mail.from.name' => $source->from_name,
-        // ]);
-
         // // Invio
         Mail::mailer('smtp')->to($res->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
 
-        
-        
-        // Mail::mailer('smtp')
-        // ->to($res->email)
-        // ->send(
-        //     (new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name))
-        //     ->from($source->from_address, $source->from_name) // 👈 qui
-        // );
-        
-        // // Usa il tuo Mailable esistente
-        // $mail = new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name);
-        // // Invia passando dal mailer smtp appena configurato
-        // Mail::mailer('smtp')->to($res->email)->send($mail);
 
         return;   
     }
