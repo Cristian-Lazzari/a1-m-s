@@ -124,7 +124,7 @@ class WaController extends Controller
 
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
-        $orders = DB::connection('dynamic')
+        $order = DB::connection('dynamic')
             ->table('orders')
             ->join('order_product', 'orders.id', '=', 'order_product.order_id')
             ->join('products', 'order_product.product_id', '=', 'products.id')
