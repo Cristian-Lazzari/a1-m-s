@@ -645,7 +645,6 @@ class WaController extends Controller
         // Nome univoco per questa sorgente
         $mailerName = 'dynamic_' . uniqid();
 
-        // Config dinamica
         config([
             "mail.mailers.$mailerName" => [
                 'transport' => 'smtp',
@@ -654,17 +653,15 @@ class WaController extends Controller
                 'encryption' => 'tls',
                 'username' => $source->username,
                 'password' => $source->token,
-                'timeout' => null,
-                'auth_mode' => null,
             ],
-            'mail.from.address' => $source->from_address,
-            'mail.from.name' => $source->from_name,
         ]);
 
-        // Invio usando il mailer dinamico
         Mail::mailer($mailerName)
-            ->to($res->email)
-            ->send(new confermaOrdineAdmin($bodymail , $source->from_address, $source->from_name));
+            ->raw('Test corpo', function ($message) use ($source, $res) {
+                $message->to($res->email)
+                        ->from($source->from_address, $source->from_name)
+                        ->subject('Test dinamico');
+            });
 
                 // Crea un transport dinamico
         // config([
