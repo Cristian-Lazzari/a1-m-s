@@ -505,6 +505,7 @@ class WaController extends Controller
             'address' => $order->address,
             'address_n' => $order->address_n,
 
+            'app_domain' => $source->app_domain,
             'app_url' => $source->app_url,
             'app_name' => $source->app_name,
             
@@ -645,6 +646,7 @@ class WaController extends Controller
             'phone' => $res->phone,
             'admin_phone' => $p_set['telefono'],
 
+            'app_domain' => $source->app_domain,
             'app_url' => $source->app_url,
             'app_name' => $source->app_name,
             

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('username');
             $table->string('token');
             $table->string('app_url');
+            $table->string('app_domain');
             $table->string('app_name');
             $table->timestamps();
         });
