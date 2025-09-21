@@ -650,7 +650,7 @@ class WaController extends Controller
         ]);
 
         // Usa il tuo Mailable esistente
-        $mail = new confermaOrdineAdmin($bodymail);
+        $mail = new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name);
 
         // Invia passando dal mailer smtp appena configurato
         Mail::mailer('smtp')->to($res->email)->send($mail);
