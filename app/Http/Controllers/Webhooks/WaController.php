@@ -124,7 +124,7 @@ class WaController extends Controller
 
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
-        $order = DB::connection('dynamic')
+        $orders = DB::connection('dynamic')
             ->table('orders')
             ->join('order_product', 'orders.id', '=', 'order_product.order_id')
             ->join('products', 'order_product.product_id', '=', 'products.id')
@@ -132,7 +132,7 @@ class WaController extends Controller
             ->join('ingredients', 'ingredient_product.ingredient_id', '=', 'ingredients.id')
             ->where('orders.whatsapp_message_id', 'like', '%' . $messageId . '%')
             ->select('orders.*', 'products.*', 'ingredients.*')
-            ->first();
+            ->get();
         //$order = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         //$order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
