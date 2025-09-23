@@ -102,12 +102,16 @@ class WaController extends Controller
             'charset'   => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
         ]);
+        // resettiamo la connessione per far usare i nuovi parametri
+        DB::purge('mysql');
+        DB::reconnect('mysql');
+
     
 
 
         $number = $data['number'];
 
-        //$setting = Setting::where('name', 'wa')->first();
+
         $setting = Setting::where('name', 'wa')->first();
 
         $property = json_decode($setting->property, true);
