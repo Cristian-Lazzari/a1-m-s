@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Config;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 
@@ -73,7 +74,6 @@ class WaController extends Controller
             
             // Dati da inviare
             $data = [
-                'db_name' => $db_name,
                 'wa_id' => $messageId,
                 'number' => $number,
                 'response' => $buttonId == 'Conferma' ? 1 : 0,
@@ -82,6 +82,9 @@ class WaController extends Controller
             // Invio della richiesta POST
             // $response = Http::post($url, $data);
             $this->handle_p2($data, $source);
+            DB::disconnect('mysql');
+            Config::set("database.connections.mysql", config('database.connections.mysql')); 
+
         } else {
             Log::info("Struttura del messaggio non valida o messaggio mancante.");
         }
@@ -89,25 +92,23 @@ class WaController extends Controller
     // Metodo per gestire i webhook
     protected function handle_p2($data, $source)
     {   
-        $config = [
+        Config::set("database.connections.mysql", [
             'driver'    => 'mysql',
             'host'      => '127.0.0.1',
             'port'      => '3306',
-            'database'  => $data['db_name'],
+            'database'  => $source->db_name,
             'username'  => 'dciludls_ceo',
             'password'  => 'sepT2921!',
             'charset'   => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
-        ];
+        ]);
     
-        DB::purge('dynamic'); // resetta eventuali connessioni precedenti con lo stesso nome
-        config(['database.connections.dynamic' => $config]);
 
 
         $number = $data['number'];
 
         //$setting = Setting::where('name', 'wa')->first();
-        $setting = DB::connection('dynamic')->table('settings')->where('name', 'wa')->first();
+        $setting = Setting::where('name', 'wa')->first();
 
         $property = json_decode($setting->property, true);
         $numbers = $property['numbers'];
@@ -124,33 +125,24 @@ class WaController extends Controller
 
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
-        // $order = DB::connection('dynamic')
-        //     ->table('orders')
-        //     ->join('order_product', 'orders.id', '=', 'order_product.order_id')
-        //     ->join('products', 'order_product.product_id', '=', 'products.id')
-        //     ->join('ingredient_product', 'products.id', '=', 'ingredient_product.product_id')
-        //     ->join('ingredients', 'ingredient_product.ingredient_id', '=', 'ingredients.id')
-        //     ->where('orders.whatsapp_message_id', 'like', '%' . $messageId . '%')
-        //     ->select('orders.*', 'products.*', 'ingredients.*')
-        //     ->get();
-        //$order = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        //$order       = DB::connection('dynamic')->table('orders'      )->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $reservation = DB::connection('dynamic')->table('reservations')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        // if ($order) {
-        //     Log::info("(WC)L' ordine: " . json_encode($order));
-        //     $status = $order->status;
-        //     $this->statusOrder($button_r, $order, $source);
-        //     if($button_r == 1 && in_array($status, [1, 5])){
-        //         return;
-        //     }elseif($button_r == 0 && in_array($status, [0, 6])){
-        //         return;
-        //     }elseif(in_array($status, [1, 5, 0, 6])){
-        //         return;
-        //     }
-        //     if ($co_work) {
-        //         $this->message_co_worker(1, $button_r, $p, $order, $number_correct);
-        //     }
-        // } else
+
+        $order       = Orders::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        $reservation = Reservations::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        if ($order) {
+            Log::info("(WC)L' ordine: " . json_encode($order));
+            $status = $order->status;
+            $this->statusOrder($button_r, $order, $source);
+            if($button_r == 1 && in_array($status, [1, 5])){
+                return;
+            }elseif($button_r == 0 && in_array($status, [0, 6])){
+                return;
+            }elseif(in_array($status, [1, 5, 0, 6])){
+                return;
+            }
+            if ($co_work) {
+                $this->message_co_worker(1, $button_r, $p, $order, $number_correct);
+            }
+        } else
         if ($reservation) {
             if ($reservation) {
                 $status = $reservation->status;
@@ -170,7 +162,6 @@ class WaController extends Controller
             // Nessun ordine o prenotazione trovato per il Message ID
             Log::info("(WC) Nessun ordine o prenotazione trovati per il Message ID: " . $messageId);
         }
-      
         return;
     }
 
@@ -278,7 +269,7 @@ class WaController extends Controller
             ])->post($url, $data);
             // $m_id = $response->json()['messages'][0]['id'] ?? null;
             // $messages_id[] = $m_id;
-            // non serve salvarti il messaggio tanto non possono rispondere a questo è solo la nostifica di che ha fatto l'altro...
+            // non serve salvarti il messaggio tanto non possono rispondere a questo è solo la nostifica di che ha fatto l'altro... grazie amicoo hahahahaha
             // $this->save_message([        
             //     'wa_id' => $messages_id,
             //     'type_1' => $type_m_1,
@@ -311,21 +302,9 @@ class WaController extends Controller
         }
         if($c_a == 1){
             if($order->status == 2){
-                DB::connection('dynamic')
-                ->table('orders')
-                ->where('id', $order->id)
-                ->update([
-                    'status'=> 1,
-                    'updated_at' => now(),
-                ]);
+                $order->status = 1;
             }elseif($order->status == 3){
-                DB::connection('dynamic')
-                ->table('orders')
-                ->where('id', $order->id)
-                ->update([
-                    'status'=> 5,
-                    'updated_at' => now(),
-                ]);
+                $order->status = 5;
             }
             $m = 'L\'ordine è stata confermato correttamente';
             $message = 'Grazie ' . $order->name . ' per aver ordinato da noi, ti confermiamo che il tuo ordine sarà pronto per il ' . $order->date_slot;    
@@ -347,13 +326,7 @@ class WaController extends Controller
                     $refund = Refund::create([
                         'payment_intent' => $order->checkout_session_id, // Questo è l'ID dell'intent di pagamento
                     ]);
-                    DB::connection('dynamic')
-                    ->table('orders')
-                    ->where('id', $order->id)
-                    ->update([
-                        'status'=> 6,
-                        'updated_at' => now(),
-                    ]);
+                    $order->status = 6;
                 } catch (\Exception $e) {
                     return response()->json(['error' => $e->getMessage()], 500);
                 }
@@ -361,42 +334,24 @@ class WaController extends Controller
             }elseif(in_array($order->status, [2, 1])){
                 $m = 'L\'ordine è stato annullato correttamente';
                 $message = 'Ci dispiace informarti che purtroppo il tuo ordine è stato annullato';
-                DB::connection('dynamic')
-                ->table('orders')
-                ->where('id', $order->id)
-                ->update([
-                    'status'=> 0,
-                    'updated_at' => now(),
-                ]);
+                $order->status = 0;
             }else{
                 $m = 'L\'ordine era già stato annullato!';
                 return; 
             }
-            // $date = Date::where('date_slot', $order->date_slot)->firstOrFail();
-            $date = DB::connection('dynamic')
-                ->table('dates')
-                ->where('date_slot', $order->date_slot)
-                ->first();
+            $date = Date::where('date_slot', $order->date_slot)->first();
             $vis = json_decode($date->visible, 1); 
             $reserving = json_decode($date->reserving, 1);
 
-            $adv_s = DB::connection('dynamic')
-                ->table('settings')
-                ->where('name', 'advanced')
-                ->first();
-            //$adv_s = Setting::where('name', 'advanced')->first();
+            $adv_s = Setting::where('name', 'advanced')->first();
             $property_adv = json_decode($adv_s->property, 1); 
             if( $property_adv['too']){
                 $np_cucina_1 = 0;
                 $np_cucina_2 = 0;
                 foreach ($order->products as $p) {
                     $qt = 0;
-                    $op = DB::connection('dynamic')
-                        ->table('order_product')
-                        ->where('product_id', $p->id)
-                        ->where('order_id', $order->id)
-                        ->first();
-                    //$op = OrderProduct::where('product_id', $p->id)->where('order_id', $order->id)->firstOrFail();
+               
+                    $op = OrderProduct::where('product_id', $p->id)->where('order_id', $order->id)->firstOrFail();
                     if($op !== null){
                         $qt = $op->quantity;
                         if($p->type_plate == 1 && $qt !== 0){
@@ -438,16 +393,13 @@ class WaController extends Controller
 
                 }
             }
-            DB::connection('dynamic')
-            ->table('dates')
-            ->where('id', $date->id)
-            ->update([
-                'reserving'=> json_encode($reserving),
-                'visible'  => json_encode($vis),
-                'updated_at' => now(),
-            ]);
+
+            $date->reserving = json_encode($reserving);
+            $date->visible   = json_encode($vis);
+            $date->update();
 
         }
+        $order->update();
 
         //new menu
         $product_r = [];
@@ -457,17 +409,11 @@ class WaController extends Controller
             $r_option = [];
             $r_add = [];
             foreach ($arrO as $o) {
-                $ingredient = DB::connection('dynamic')
-                    ->table('ingredients')
-                    ->where('name', $o)
-                    ->first();
+                $ingredient = Ingredient::where('name', $o)->first();
                 $r_option[] = $ingredient;
             }
             foreach ($arrA as $o) {
-                $ingredient = DB::connection('dynamic')
-                    ->table('ingredients')
-                    ->where('name', $o)
-                    ->first();
+                $ingredient = Ingredient::where('name', $o)->first();
                 $r_add[] = $ingredient;
             }
             $p->setAttribute('r_option', $r_option);
@@ -478,11 +424,7 @@ class WaController extends Controller
             'products' => $product_r,
             'menus' => $order->menus,
         ];
-        $set = DB::connection('dynamic')
-            ->table('settings')
-            ->where('name', 'Contatti')
-            ->first();
-        //$set = Setting::where('name', 'Contatti')->firstOrFail();
+        $set = Setting::where('name', 'Contatti')->first();
         $p_set = json_decode($set->property, true);
         $bodymail = [
             'type' => 'or',
@@ -539,19 +481,10 @@ class WaController extends Controller
         }elseif(in_array($res->status, [1, 5, 0, 6])){
             return;
         }
-        $adv_s = DB::connection('dynamic')
-            ->table('settings')
-            ->where('name', 'advanced')
-            ->first();
+        $adv_s = Setting::where('name', 'advanced')->first();
         $property_adv = json_decode($adv_s->property, 1);
         if($c_a == 1){
-            DB::connection('dynamic')
-            ->table('reservations')
-            ->where('id', $res->id)
-            ->update([
-                'status'=> 1,
-                'updated_at' => now(),
-            ]);
+            $res->status = 1;
             $m = 'La prenotazione e\' stata confermata correttamente';
             $message = 'Siamo felici di informarti che la tua prenotazione e\' stata confermata, ti ricordo la data e l\'orario che hai scelto: ' . $res->date_slot ;
         }else{
@@ -559,10 +492,7 @@ class WaController extends Controller
                 $m = 'La prenotazione e\' stata gia annullata correttamente';
                 return;
             }
-            $date = DB::connection('dynamic')
-                ->table('dates')
-                ->where('date_slot', $res->date_slot)
-                ->first();
+            $date = Date::where('date_slot', $res->date_slot)->first();
             $vis = json_decode($date->visible, 1); 
             $reserving = json_decode($date->reserving, 1);
             $_p = json_decode($res->n_person);
@@ -574,55 +504,26 @@ class WaController extends Controller
                         $vis['table_1'] = 1;
                     }
                     $reserving['table_1'] = $reserving['table_1'] - $tot_p;
-                    $date->reserving = json_encode($reserving);
-                    $date->visible = json_encode($vis);
-                    DB::connection('dynamic')
-                    ->table('dates')
-                    ->where('id', $date->id)
-                    ->update([
-                        'reserving'=> json_encode($reserving),
-                        'visible'  => json_encode($vis),
-                        'updated_at' => now(),
-                    ]);
                 }else{
                     if($vis['table_2'] == 0){
                         $vis['table_2'] = 1;
                     }
                     $reserving['table_2'] = $reserving['table_2'] - $tot_p;
-                    DB::connection('dynamic')
-                    ->table('dates')
-                    ->where('id', $date->id)
-                    ->update([
-                        'reserving'=> json_encode($reserving),
-                        'visible'  => json_encode($vis),
-                        'updated_at' => now(),
-                    ]);
                 }
             }else{
                 if($vis['table'] == 0){
                     $vis['table'] = 1;
                 }
                 $reserving['table'] = $reserving['table'] - $tot_p;
-                DB::connection('dynamic')
-                ->table('dates')
-                ->where('id', $date->id)
-                ->update([
-                    'reserving'=> json_encode($reserving),
-                    'visible'  => json_encode($vis),
-                    'updated_at' => now(),
-                ]);
             }
-
-            DB::connection('dynamic')
-            ->table('reservations')
-            ->where('id', $res->id)
-            ->update([
-                'status'=> 0,
-                'updated_at' => now(),
-            ]);
+            $date->reserving = json_encode($reserving);
+            $date->visible = json_encode($vis);
+            $res->status = 0;
+            $date->update();
             $m = 'La prenotazione e\' stata annullata correttamente';
             $message = 'Ci spiace informarti che la tua prenotazione e\' stata annullata per la data e l\'orario che hai scelto... ' . $res->date_slot ;
         }
+        $res->update();
         
         $set = DB::connection('dynamic')
             ->table('settings')
@@ -711,7 +612,7 @@ class WaController extends Controller
     }
     protected function updateLastResponseWa($c)
     {
-        $setting = DB::connection('dynamic')->table('settings')->where('name', 'wa')->first();
+        $setting = Setting::where('name', 'wa')->first();
         $property = json_decode($setting->property, true);
         $now = Carbon::now();
         if($c < 2){
@@ -720,13 +621,8 @@ class WaController extends Controller
             $property['last_response_wa_1'] = $now;
 
         }
-        DB::connection('dynamic')
-            ->table('settings')
-            ->where('name','wa')
-            ->update([
-                'property'=> json_encode($property),
-                'updated_at' => now(),
-            ]);
+        $setting->property= json_encode($property);
+        $setting->update();
         
     }
 
