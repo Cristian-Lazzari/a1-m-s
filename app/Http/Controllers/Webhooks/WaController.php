@@ -92,6 +92,7 @@ class WaController extends Controller
     // Metodo per gestire i webhook
     protected function handle_p2($data, $source)
     {   
+        DB::disconnect('mysql');
         Config::set("database.connections.mysql", [
             'driver'    => 'mysql',
             'host'      => '127.0.0.1',
@@ -103,7 +104,7 @@ class WaController extends Controller
             'collation' => 'utf8mb4_unicode_ci',
         ]);
         // resettiamo la connessione per far usare i nuovi parametri
-        DB::purge('mysql');
+       // DB::purge('mysql');
         DB::reconnect('mysql');
 
     
