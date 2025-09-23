@@ -130,8 +130,8 @@ class WaController extends Controller
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
 
-        $order       = Orders::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
-        $reservation = Reservations::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        $order       = Order::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
+        $reservation = Reservation::where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         if ($order) {
             Log::info("(WC)L' ordine: " . json_encode($order));
             $status = $order->status;
