@@ -272,15 +272,7 @@ class WaController extends Controller
                 'Authorization' => config('configurazione.WA_TO'),
                 'Content-Type' => 'application/json'
             ])->post($url, $data);
-            // $m_id = $response->json()['messages'][0]['id'] ?? null;
-            // $messages_id[] = $m_id;
-            // non serve salvarti il messaggio tanto non possono rispondere a questo è solo la nostifica di che ha fatto l'altro... grazie amicoo hahahahaha
-            // $this->save_message([        
-            //     'wa_id' => $messages_id,
-            //     'type_1' => $type_m_1,
-            //     'source' => config('configurazione.db'),
-            // ]);
-    
+
             // Log della risposta ricevuta
             Log::info("(WC) Risposta da WhatsApp:", ['response' => $response->json()]);
     
@@ -344,65 +336,6 @@ class WaController extends Controller
                 $m = 'L\'ordine era già stato annullato!';
                 return; 
             }
-            $date = Date::on('dynamic')->where('date_slot', $order->date_slot)->first();
-            $vis = json_decode($date->visible, 1); 
-            $reserving = json_decode($date->reserving, 1);
-
-            $adv_s = Setting::on('dynamic')->where('name', 'advanced')->first();
-            $property_adv = json_decode($adv_s->property, 1); 
-            if( $property_adv['too']){
-                $np_cucina_1 = 0;
-                $np_cucina_2 = 0;
-                foreach ($order->products as $p) {
-                    $qt = 0;
-               
-                    $op = OrderProduct::on('dynamic')->where('product_id', $p->id)->where('order_id', $order->id)->firstOrFail();
-                    if($op !== null){
-                        $qt = $op->quantity;
-                        if($p->type_plate == 1 && $qt !== 0){
-                            $np_cucina_1 += ($p->slot_plate * $qt);
-                            if($vis['cucina_1'] == 0){
-                                $vis['cucina_1'] = 1;
-                            }
-                        }
-                        if($p->type_plate == 2){
-                            $np_cucina_2 += ($p->slot_plate * $qt);
-                            if($vis['cucina_2'] == 0){
-                                $vis['cucina_2'] = 1;
-                            }
-                        }
-                    }
-                }
-                $reserving['cucina_1'] = $reserving['cucina_1'] - $np_cucina_1;
-                $reserving['cucina_2'] = $reserving['cucina_2'] - $np_cucina_2;
-                if($order->address !== null){
-                    if($vis['domicilio'] == 0){
-                        $vis['domicilio'] = 1;
-                    }
-                    $reserving['domicilio'] --;
-                }
-            }else{
-                if($order->address !== null){
-                    if($vis['domicilio'] == 0){
-                        $vis['domicilio'] = 1;
-                    }
-                    if($vis['asporto'] == 0){
-                        $vis['asporto'] = 1;
-                    }
-                    $reserving['domicilio'] --;
-                }else{
-                    if($vis['asporto'] == 0){
-                        $vis['asporto'] = 1;
-                    }
-                    $reserving['asporto'] --;
-
-                }
-            }
-
-            $date->reserving = json_encode($reserving);
-            $date->visible   = json_encode($vis);
-            $date->update();
-
         }
         $order->update();
 
@@ -497,34 +430,7 @@ class WaController extends Controller
                 $m = 'La prenotazione e\' stata gia annullata correttamente';
                 return;
             }
-            $date = Date::on('dynamic')->where('date_slot', $res->date_slot)->first();
-            $vis = json_decode($date->visible, 1); 
-            $reserving = json_decode($date->reserving, 1);
-            $_p = json_decode($res->n_person);
-            $tot_p = $_p->child + $_p->adult;
-            
-            if($property_adv['dt']){
-                if($res->sala == 1){
-                    if($vis['table_1'] == 0){
-                        $vis['table_1'] = 1;
-                    }
-                    $reserving['table_1'] = $reserving['table_1'] - $tot_p;
-                }else{
-                    if($vis['table_2'] == 0){
-                        $vis['table_2'] = 1;
-                    }
-                    $reserving['table_2'] = $reserving['table_2'] - $tot_p;
-                }
-            }else{
-                if($vis['table'] == 0){
-                    $vis['table'] = 1;
-                }
-                $reserving['table'] = $reserving['table'] - $tot_p;
-            }
-            $date->reserving = json_encode($reserving);
-            $date->visible = json_encode($vis);
             $res->status = 0;
-            $date->update();
             $m = 'La prenotazione e\' stata annullata correttamente';
             $message = 'Ci spiace informarti che la tua prenotazione e\' stata annullata per la data e l\'orario che hai scelto... ' . $res->date_slot ;
         }
