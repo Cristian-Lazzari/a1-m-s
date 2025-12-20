@@ -207,12 +207,13 @@ class WaController extends Controller
                 $data = [
                     'messaging_product' => 'whatsapp',
                     'to' => $number,
-                    "type" => "text",
-                    "context" => [
-                        "message_id" => $old_id
+                    'recipient_type' => 'individual',
+                    'type' => 'text',
+                    'context' => [
+                        'message_id' => $old_id
                     ],
-                    "text" => [
-                        "body" => $m
+                    'text' => [
+                        'body' => $m
                     ]
                 ];
             } else {
@@ -220,7 +221,7 @@ class WaController extends Controller
                 $data = [
                     'messaging_product' => 'whatsapp',
                     'to' => $number,
-                    'category' => 'utility',
+                    'recipient_type' => 'individual',
                     'type' => 'template',
                     'template' => [
                         'name' => 'response_link',
@@ -265,7 +266,7 @@ class WaController extends Controller
                 ];
             }
     
-            $url = 'https://graph.facebook.com/v20.0/' . config('configurazione.WA_ID') . '/messages';
+            $url = 'https://graph.facebook.com/v24.0/' . config('configurazione.WA_ID') . '/messages';
             
             $response = Http::withHeaders([
                 'Authorization' => config('configurazione.WA_TO'),
