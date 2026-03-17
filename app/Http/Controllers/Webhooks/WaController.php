@@ -121,10 +121,13 @@ class WaController extends Controller
             $co_work = true;
             $p = array_search($number, $numbers);
             $this->updateLastResponseWa($p);
+            Log::info("Co1 ==> {$p}");
             $p = $p == 0 ? 1 : 0;
             $this->updateLastResponseWa($p);
+            Log::info("Co2 ==> {$p}");
             $number_correct = $numbers[$p];
         }else{
+            Log::info("single ==> lol");
             $this->updateLastResponseWa(0);
         }
 
