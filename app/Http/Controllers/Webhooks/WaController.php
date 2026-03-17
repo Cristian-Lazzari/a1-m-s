@@ -122,6 +122,7 @@ class WaController extends Controller
             $p = array_search($number, $numbers);
             $this->updateLastResponseWa($p);
             $p = $p == 0 ? 1 : 0;
+            $this->updateLastResponseWa($p);
             $number_correct = $numbers[$p];
         }else{
             $this->updateLastResponseWa(0);
