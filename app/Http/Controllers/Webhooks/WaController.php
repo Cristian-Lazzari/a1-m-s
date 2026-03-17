@@ -525,6 +525,7 @@ class WaController extends Controller
         $setting = Setting::on('dynamic')->where('name', 'wa')->first();
         $property = json_decode($setting->property, true);
         $now = Carbon::now();
+        Log::info("update-Last-Response-Wa ==> {$c}");
         if($c < 2){
             $property['last_response_wa_1'] = $now;
         }else {
