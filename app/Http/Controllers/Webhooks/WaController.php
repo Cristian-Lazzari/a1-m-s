@@ -530,7 +530,7 @@ class WaController extends Controller
         $property = json_decode($setting->property, true);
         $now = Carbon::now();
         Log::info("update-Last-Response-Wa ==> {$c}");
-        if($c < 2){
+        if($c == 0){
             $property['last_response_wa_1'] = $now;
         }else {
             $property['last_response_wa_2'] = $now;
