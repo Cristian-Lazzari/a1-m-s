@@ -528,7 +528,7 @@ class WaController extends Controller
         if($c < 2){
             $property['last_response_wa_1'] = $now;
         }else {
-            $property['last_response_wa_1'] = $now;
+            $property['last_response_wa_2'] = $now;
 
         }
         $setting->property= json_encode($property);
