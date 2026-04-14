@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use App\Mail\confermaOrdineAdmin;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -43,50 +44,154 @@ class WaController extends Controller
     public function handle(Request $request)
     {
         $data = $request->all();
-         Log::info("Webhook ricevuto", $data);
-    
-        if (isset($data['entry'][0]['changes'][0]['value']['messages'][0])) {
-            $message = $data['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
-            $number = $message['from'] ?? 'non hai trovato il numero';
-            $messageId = '';
-            $buttonId = '';
-            Log::info("messaggio:" , $message);
-            if(isset($message['interactive'])){
-                $messageId = $data['entry'][0]['changes'][0]['value']['messages'][0]['context']['id'] ?? null;
-                $buttonId = $message['interactive']['button_reply']['id']; 
-                Log::info("Pulsante premuto(interactive): $buttonId, ID messaggio: $messageId");   
-            }else {
-                $messageId = $message['context']['id'] ?? null;    
-                $buttonId = $message['button']['text']; 
-                Log::info("Pulsante premuto(template): $buttonId, ID messaggio: $messageId");
-            }
+        Log::info("Webhook ricevuto", $data);
 
-            $message = Message::where('wa_id' , $messageId)->firstOrFail();
-            if (!$message) {
-                Log::info("Nessun  Message : " . $messageId);
-                return;
-            }
-            $source = Source::where('id', $message->source)->firstOrFail();
-            $db_name = $source->db_name;
-            // URL del sito ricevente
-            //$url = $correct_domain . '/webhook/wa' ;
-            
-            // Dati da inviare
-            $data = [
-                'wa_id' => $messageId,
-                'number' => $number,
-                'response' => $buttonId == 'Conferma' ? 1 : 0,
-            ];
-    
-            // Invio della richiesta POST
-            // $response = Http::post($url, $data);
-            $this->handle_p2($data, $source);
-            DB::disconnect('mysql');
-            Config::set("database.connections.mysql", config('database.connections.mysql')); 
+        $incomingMessage = data_get($data, 'entry.0.changes.0.value.messages.0');
 
-        } else {
+        if (!$incomingMessage) {
             Log::info("Struttura del messaggio non valida o messaggio mancante.");
+            return response('EVENT_RECEIVED', 200);
         }
+
+        Log::info("Messaggio webhook normalizzato:", $incomingMessage);
+
+        $messageId = data_get($incomingMessage, 'context.id');
+        if (!$messageId) {
+            Log::warning("(WC) Risposta WhatsApp senza context.id", [
+                'incoming_type' => $incomingMessage['type'] ?? null,
+                'message' => $incomingMessage,
+            ]);
+
+            return response('EVENT_RECEIVED', 200);
+        }
+
+        $storedMessage = Message::where('wa_id', $messageId)->first();
+        if (!$storedMessage) {
+            Log::warning("(WC) Nessun Message trovato per il context.id ricevuto", [
+                'wa_id' => $messageId,
+            ]);
+
+            return response('EVENT_RECEIVED', 200);
+        }
+
+        $source = Source::find($storedMessage->source);
+        if (!$source) {
+            Log::warning("(WC) Nessuna Source trovata per il messaggio ricevuto", [
+                'wa_id' => $messageId,
+                'source_id' => $storedMessage->source,
+            ]);
+
+            return response('EVENT_RECEIVED', 200);
+        }
+
+        $reply = $this->extractWhatsappReplyAction($incomingMessage, $storedMessage);
+        if (!$reply) {
+            Log::warning("(WC) Impossibile determinare il pulsante premuto", [
+                'wa_id' => $messageId,
+                'stored_type' => $storedMessage->type,
+                'incoming_type' => $incomingMessage['type'] ?? null,
+                'message' => $incomingMessage,
+            ]);
+
+            return response('EVENT_RECEIVED', 200);
+        }
+
+        $responseValue = $this->mapWhatsappReplyToResponse($reply['action']);
+        if ($responseValue === null) {
+            Log::warning("(WC) Azione WhatsApp non riconosciuta, nessun aggiornamento eseguito", [
+                'wa_id' => $messageId,
+                'action' => $reply['action'],
+                'reply_type' => $reply['type'],
+            ]);
+
+            return response('EVENT_RECEIVED', 200);
+        }
+
+        Log::info("(WC) Pulsante premuto", [
+            'wa_id' => $messageId,
+            'stored_type' => $storedMessage->type,
+            'reply_type' => $reply['type'],
+            'action' => $reply['action'],
+        ]);
+
+        $payload = [
+            'wa_id' => $messageId,
+            'number' => $incomingMessage['from'] ?? 'non hai trovato il numero',
+            'response' => $responseValue,
+        ];
+
+        $this->handle_p2($payload, $source);
+        DB::disconnect('mysql');
+        Config::set("database.connections.mysql", config('database.connections.mysql'));
+
+        return response('EVENT_RECEIVED', 200);
+    }
+
+    protected function extractWhatsappReplyAction(array $incomingMessage, Message $storedMessage): ?array
+    {
+        $preferredType = $this->normalizeStoredWhatsappMessageType($storedMessage->type ?? null);
+        $parsers = $preferredType === 'template'
+            ? ['template', 'interactive']
+            : ['interactive', 'template'];
+
+        foreach ($parsers as $parser) {
+            $reply = $parser === 'interactive'
+                ? $this->extractInteractiveReplyAction($incomingMessage)
+                : $this->extractTemplateReplyAction($incomingMessage);
+
+            if ($reply !== null) {
+                return [
+                    'type' => $parser,
+                    'action' => $reply,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    protected function extractInteractiveReplyAction(array $incomingMessage): ?string
+    {
+        return data_get($incomingMessage, 'interactive.button_reply.id')
+            ?? data_get($incomingMessage, 'interactive.button_reply.title')
+            ?? data_get($incomingMessage, 'interactive.list_reply.id')
+            ?? data_get($incomingMessage, 'interactive.list_reply.title');
+    }
+
+    protected function extractTemplateReplyAction(array $incomingMessage): ?string
+    {
+        return data_get($incomingMessage, 'button.payload')
+            ?? data_get($incomingMessage, 'button.text');
+    }
+
+    protected function normalizeStoredWhatsappMessageType($type): ?string
+    {
+        $normalizedType = is_string($type) ? strtolower(trim($type)) : (string) $type;
+
+        return match ($normalizedType) {
+            '0', 'interactive' => 'interactive',
+            '1', 'template', 'button' => 'template',
+            default => null,
+        };
+    }
+
+    protected function mapWhatsappReplyToResponse(?string $action): ?int
+    {
+        if (!is_string($action) || trim($action) === '') {
+            return null;
+        }
+
+        $normalized = Str::of($action)->squish()->lower()->toString();
+
+        if (str_contains($normalized, 'conferm') || str_contains($normalized, 'accept')) {
+            return 1;
+        }
+
+        if (str_contains($normalized, 'annull') || str_contains($normalized, 'cancel')) {
+            return 0;
+        }
+
+        return null;
     }
     // Metodo per gestire i webhook
     protected function handle_p2($data, $source)
