@@ -515,7 +515,7 @@ class WaController extends Controller
         ]);
 
         // // Invio
-        Mail::mailer('smtp')->to($order->email)->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
+        Mail::mailer('smtp')->to($order->email)->locale('it')->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
 
         return $m;
     }
@@ -590,7 +590,7 @@ class WaController extends Controller
             ]);
 
             // Invio mail
-            Mail::mailer('smtp')->to($res->email)
+            Mail::mailer('smtp')->to($res->email)->locale('it')
                 ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name));
 
             Log::info("Email inviata correttamente a {$res->email} da {$source->username}");

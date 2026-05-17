@@ -8,6 +8,7 @@ return [
     'X-API-KEY'             => env('X-API-KEY'),
     'name'                  => env('APP_NAME'),
     'mail'                  => env('MAIL_FROM_ADDRESS'),
+    'default_lang'          => env('DEFAULT_LANG', 'it'),
 
     'WA_TO'                 => env('WA_TO'),
     'WA_ID'                 => env('WA_ID'),

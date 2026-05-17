@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,18 +23,20 @@
         <h4 style="color: #04001db9; font-size: 16px; margin-top: 0px">{{$content_mail['subtitle']}}</h4>
         @endif
         @php
-            use Carbon\Carbon;
+            $formatPrice = static function ($value): string {
+                return '€' . number_format((float) ($value ?? 0), 2, ',', '.');
+            };
 
             $dateSlot = $content_mail['date_slot']; // Es: '12/09/2022' oppure '12/09/2022 22:43'
 
             if (strpos($dateSlot, ' ') !== false) {
                 // Caso: la stringa contiene anche l'orario
-                $formattedDate = Carbon::createFromFormat('d/m/Y H:i', $dateSlot)
+                $formattedDate = \Carbon\Carbon::createFromFormat('d/m/Y H:i', $dateSlot)
                     ->locale('it')
                     ->translatedFormat('l j F \a\l\l\e H:i');
             } else {
                 // Caso: solo la data, senza orario
-                $formattedDate = Carbon::createFromFormat('d/m/Y', $dateSlot)
+                $formattedDate = \Carbon\Carbon::createFromFormat('d/m/Y', $dateSlot)
                     ->locale('it')
                     ->translatedFormat('l j F');
             }
@@ -63,7 +65,7 @@
                             @if ($i->pivot->quantity > 1)
                                 <span style="color: #f4f4f4; font-size: 18px; font-weight: bold;">* {{$i->pivot->quantity}}</span>
                             @endif
-                            <span style="color: #f4f4f4; font-size: 15px;  margin-left: auto;"> € {{$i->price / 100 }}</span>
+                            <span style="color: #f4f4f4; font-size: 15px;  margin-left: auto;">{{ $formatPrice($i->price) }}</span>
                         </div>
                         @if($i->fixed_menu == '2')
                         <br>
@@ -90,7 +92,7 @@
                                                 {{$c->name}} ({{$c->category->name}})
                                             </span>
                                             @if ($c->pivot->extra_price)   
-                                                <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ €{{$c->pivot->extra_price / 100}}</strong>
+                                                <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ {{ $formatPrice($c->pivot->extra_price) }}</strong>
                                             @endif    
                                         </div>
                                     </div>
@@ -128,7 +130,7 @@
                             @if ($i->pivot->quantity > 1)
                                 <span style="color: #f4f4f4; font-size: 18px; font-weight: bold;">* {{$i->pivot->quantity}}</span>
                             @endif
-                            <span style="color: #f4f4f4; font-size: 15px;  margin-left: auto;"> € {{$i->price / 100 }}</span>
+                            <span style="color: #f4f4f4; font-size: 15px;  margin-left: auto;">{{ $formatPrice($i->price) }}</span>
                         </div>
                         @if (count($i->r_option) || count($i->r_add) || count($arrD))
                         <br>
@@ -143,7 +145,7 @@
                                                     {{$a->name}}
                                                 </span>
                                                 @if ($a->price)   
-                                                    <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ €{{$a->price / 100}}</strong>
+                                                    <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ {{ $formatPrice($a->price) }}</strong>
                                                 @endif    
                                             </div>
                                         @endforeach
@@ -159,7 +161,7 @@
                                                 {{$a->name}}
                                             </span>
                                             @if ($a->price)   
-                                                <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ €{{$a->price / 100}}</strong>
+                                                <strong style="color: #f4f4f4; font-size: 13px;  margin-left: auto;">+ {{ $formatPrice($a->price) }}</strong>
                                             @endif    
                                         </div>
                                     @endforeach
@@ -192,7 +194,7 @@
                     <span style="color: #04001d; opacity: .8; font-size: 16px; font-family: monospace">
                         Costo della consegna a domicilio:
                     </span>
-                        <strong style="color: #04001d; opacity: .8; font-size: 15px;  margin-left: auto; font-family: monospace">+ €{{$content_mail['delivery_cost'] / 100}}</strong>
+                        <strong style="color: #04001d; opacity: .8; font-size: 15px;  margin-left: auto; font-family: monospace">+ {{ $formatPrice($content_mail['delivery_cost']) }}</strong>
                     </div>
                 @endif    
                 {{-- <p style="color: #04001d; font-size: 16px; margin: 10px 0;">*L'importo verra pagato al momento della consegna.</p> --}}
@@ -200,7 +202,7 @@
             <!-- Totale carrello -->
             <div style="color: #04001d; font-size: 22px; margin: 15px 0; display:flex;">
                 <h5 style="color: #04001d; font-size: 22px;">Totale carrello: </h5>
-                <h5 style="margin-left: auto; color: #04001d; font-size: 20px; font-family: monospace;">€{{$content_mail['total_price'] / 100}}</h5>
+                <h5 style="margin-left: auto; color: #04001d; font-size: 20px; font-family: monospace;">{{ $formatPrice($content_mail['total_price']) }}</h5>
             </div>
             
                 <p style="color: #04001d; font-size: 16px; margin: 10px 0;">Modalità consegna: Ritiro asporto presso {{$content_mail['app_name']}}</p>

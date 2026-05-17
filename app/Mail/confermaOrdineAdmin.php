@@ -24,6 +24,8 @@ class confermaOrdineAdmin extends Mailable
 
     public function build()
     {
+        $this->locale('it');
+
         return $this->from($this->fromAddress, $this->fromName)
             ->subject('Conferma Ordine')
             ->view('emails.confermaOrderAdmin')
