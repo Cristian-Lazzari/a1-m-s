@@ -282,7 +282,10 @@
 
                     <!-- ---- PRODOTTI ---- -->
                     @foreach ($content_mail['cart']['products'] as $i)
-                    @php $arrD = json_decode($i->pivot->remove); @endphp
+                    @php
+                        $rawRemove = $i->pivot->remove ?? null;
+                        $arrD = (!empty($rawRemove) && $rawRemove !== '[]') ? (json_decode($rawRemove) ?? []) : [];
+                    @endphp
                     <tr>
                         <td style="padding:0 40px 10px;">
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"

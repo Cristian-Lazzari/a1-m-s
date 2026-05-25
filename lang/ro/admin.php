@@ -35,6 +35,18 @@ return [
         'status_pending' => 'În așteptare',
     ],
 
+    'wa' => [
+        'order_label'        => 'Comanda a fost',
+        'res_label'          => 'Rezervarea a fost',
+        'confirmed_word'     => 'confirmată ✅',
+        'cancelled_word'     => 'anulată ❌',
+        'colleague'          => 'colegul tău',
+        'order_msg_confirmed' => 'Comanda a fost *confirmată* ✅ de *colegul tău*',
+        'order_msg_cancelled' => 'Comanda a fost *anulată* ❌ de *colegul tău*',
+        'res_msg_confirmed'  => 'Rezervarea a fost *confirmată* ✅ de *colegul tău*',
+        'res_msg_cancelled'  => 'Rezervarea a fost *anulată* ❌ de *colegul tău*',
+    ],
+
     'controllers' => [
         'orders' => [
             'accepted_title' => 'Confirmăm că comanda dumneavoastră a fost acceptată',

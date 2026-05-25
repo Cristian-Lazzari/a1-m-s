@@ -35,6 +35,18 @@ return [
         'status_pending' => 'In attesa',
     ],
 
+    'wa' => [
+        'order_label'        => "L'ordine è stato",
+        'res_label'          => 'La prenotazione è stata',
+        'confirmed_word'     => 'confermato ✅',
+        'cancelled_word'     => 'annullato ❌',
+        'colleague'          => 'tuo collega',
+        'order_msg_confirmed' => "L'ordine è stato *confermato* ✅ dal *tuo collega*",
+        'order_msg_cancelled' => "L'ordine è stato *annullato* ❌ dal *tuo collega*",
+        'res_msg_confirmed'  => 'La prenotazione è stata *confermata* ✅ dal *tuo collega*',
+        'res_msg_cancelled'  => 'La prenotazione è stata *annullata* ❌ dal *tuo collega*',
+    ],
+
     'controllers' => [
         'orders' => [
             'accepted_title' => 'Ti confermiamo che il tuo ordine è stato accettato',

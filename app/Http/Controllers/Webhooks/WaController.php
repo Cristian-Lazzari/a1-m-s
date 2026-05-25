@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
+use App\Services\WaFailureAlertService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
@@ -212,7 +213,11 @@ class WaController extends Controller
         DB::purge('dynamic');
         DB::reconnect('dynamic');
 
-    
+        // Lingua impostata nel pannello del ristorante (usata per WA co-worker)
+        $langSetting = Setting::on('dynamic')->where('name', 'lang')->first();
+        $rawAdminLang = $langSetting?->property ?? 'it';
+        $decodedAdminLang = json_decode($rawAdminLang, true);
+        $adminLang = is_string($decodedAdminLang) ? $decodedAdminLang : $rawAdminLang;
 
 
         $number = $data['number'];
@@ -258,7 +263,7 @@ class WaController extends Controller
                 return;
             }
             if ($co_work) {
-                $this->message_co_worker(1, $button_r, $p, $order, $number_correct);
+                $this->message_co_worker(1, $button_r, $p, $order, $number_correct, $adminLang);
             }
         } else
         if ($reservation) {
@@ -273,7 +278,7 @@ class WaController extends Controller
                     return;
                 }
                 if ($co_work) {
-                    $this->message_co_worker(false, $button_r, $p, $reservation, $number_correct);
+                    $this->message_co_worker(false, $button_r, $p, $reservation, $number_correct, $adminLang);
                 }
             }
         } else {
@@ -283,27 +288,34 @@ class WaController extends Controller
         return;
     }
 
-    protected function message_co_worker($o_r, $c_a, $p, $or_res, $number){
+    protected function message_co_worker($o_r, $c_a, $p, $or_res, $number, $adminLang = 'it'){
         try {
- 
-            // Definizione dei messaggi in base allo stato
-            $m = $o_r ? 'L\'ordine è stato ' : 'La prenotazione è stata ';
-            $sub = $o_r ? 'L\'ordine è stato' : 'La prenotazione è stata';
-    
+
+            // Imposta locale per le traduzioni dei messaggi al co-worker admin
+            app()->setLocale($adminLang);
+
+            // Definizione dei messaggi in base allo stato (tradotti nella lingua admin)
             if ($o_r) {
                 $link_id = config('configurazione.APP_URL') . '/admin/orders/' . $or_res->id;
-            }else{
-                $link_id = config('configurazione.APP_URL') . '/admin/reservations/' . $or_res->id;
-            }
-            if ($c_a) {
-                $m .= '*confermat' . ($o_r ? 'o* ✅' : 'a* ✅');
-                $word = 'confermat' . ($o_r ? 'o ✅' : 'a ✅');
+                $m    = $c_a
+                    ? __('admin.wa.order_msg_confirmed')
+                    : __('admin.wa.order_msg_cancelled');
+                $sub  = __('admin.wa.order_label');
+                $word = $c_a
+                    ? __('admin.wa.confirmed_word')
+                    : __('admin.wa.cancelled_word');
             } else {
-                $m .= '*annullat' . ($o_r ? 'o* ❌' : 'a* ❌');
-                $word = 'annullat' . ($o_r ? 'o ❌' : 'a ❌');
+                $link_id = config('configurazione.APP_URL') . '/admin/reservations/' . $or_res->id;
+                $m    = $c_a
+                    ? __('admin.wa.res_msg_confirmed')
+                    : __('admin.wa.res_msg_cancelled');
+                $sub  = __('admin.wa.res_label');
+                $word = $c_a
+                    ? __('admin.wa.confirmed_word')
+                    : __('admin.wa.cancelled_word');
             }
-    
-            $m .= ' dal *tuo collega*';
+
+            $colleague = __('admin.wa.colleague');
 
             $messages = json_decode($or_res->whatsapp_message_id, true);
             $old_id = $messages[$p];
@@ -356,7 +368,7 @@ class WaController extends Controller
                                     ],
                                     [
                                         'type' => 'text',
-                                        'text' => 'tuo collega'
+                                        'text' => $colleague
                                     ],
                                     [
                                         'type' => 'text',
@@ -453,82 +465,107 @@ class WaController extends Controller
 
         $order->update();
 
-        // Costruisce l'elenco prodotti per la mail
-        $product_r = [];
-        foreach ($order->products as $p) {
-            $arrO     = $p->pivot->option !== '[]' ? json_decode($p->pivot->option, true) : [];
-            $arrA     = $p->pivot->add !== '[]' ? json_decode($p->pivot->add, true) : [];
-            $r_option = [];
-            $r_add    = [];
-            foreach ($arrO as $o) {
-                $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
-                $r_option[] = $ingredient;
+        try {
+            // Costruisce l'elenco prodotti per la mail
+            $product_r = [];
+            foreach ($order->products as $p) {
+                $rawO = $p->pivot->option ?? null;
+                $rawA = $p->pivot->add    ?? null;
+                $arrO = (!empty($rawO) && $rawO !== '[]') ? (json_decode($rawO, true) ?? []) : [];
+                $arrA = (!empty($rawA) && $rawA !== '[]') ? (json_decode($rawA, true) ?? []) : [];
+                $r_option = [];
+                $r_add    = [];
+                foreach ($arrO as $o) {
+                    $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
+                    if ($ingredient !== null) {
+                        $r_option[] = $ingredient;
+                    }
+                }
+                foreach ($arrA as $o) {
+                    $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
+                    if ($ingredient !== null) {
+                        $r_add[] = $ingredient;
+                    }
+                }
+                $p->setAttribute('r_option', $r_option);
+                $p->setAttribute('r_add', $r_add);
+                $product_r[] = $p;
             }
-            foreach ($arrA as $o) {
-                $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
-                $r_add[] = $ingredient;
-            }
-            $p->setAttribute('r_option', $r_option);
-            $p->setAttribute('r_add', $r_add);
-            $product_r[] = $p;
+            $cart_mail = [
+                'products' => $product_r,
+                'menus'    => $order->menus,
+            ];
+
+            $set   = Setting::on('dynamic')->where('name', 'Contatti')->first();
+            $p_set = $set ? json_decode($set->property, true) : [];
+
+            $bodymail = [
+                'type'   => 'or',
+                'to'     => 'user',
+                'lang'   => $lang,
+
+                'title'    => $c_a
+                    ? __('admin.controllers.orders.accepted_title')
+                    : __('admin.controllers.orders.cancelled_title'),
+                'subtitle' => $order->status == 6
+                    ? __('admin.controllers.orders.refund_subtitle')
+                    : '',
+
+                'whatsapp_message_id' => $order->whatsapp_message_id,
+                'order_id'            => $order->id,
+                'name'                => $order->name,
+                'surname'             => $order->surname,
+                'email'               => $order->email,
+                'date_slot'           => $order->date_slot,
+                'message'             => $order->message,
+                'phone'               => $order->phone,
+                'admin_phone'         => $p_set['telefono'] ?? '',
+                'delivery_cost'       => $order->delivery_cost ?? null,
+
+                'comune'    => $order->comune,
+                'address'   => $order->address,
+                'address_n' => $order->address_n,
+
+                'app_domain' => $source->app_domain,
+                'app_url'    => $source->app_url,
+                'app_name'   => $source->app_name,
+
+                'status'      => $order->status,
+                'cart'        => $cart_mail,
+                'total_price' => $order->tot_price,
+            ];
+
+            config()->set([
+                'mail.mailers.smtp.host'         => $source->host,
+                'mail.mailers.smtp.port'         => 465,
+                'mail.mailers.smtp.username'     => $source->username,
+                'mail.mailers.smtp.password'     => $source->token,
+                'mail.mailers.smtp.encryption'   => 'ssl',
+                'mail.mailers.smtp.from.address' => $source->username,
+                'mail.mailers.smtp.from.name'    => $source->app_name,
+            ]);
+
+            Mail::mailer('smtp')
+                ->to($order->email)
+                ->locale($lang)
+                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
+
+        } catch (\Throwable $e) {
+            Log::error('(WC) Errore in statusOrder', [
+                'order_id' => $order->id ?? null,
+                'lang'     => $lang,
+                'error'    => $e->getMessage(),
+                'file'     => $e->getFile(),
+                'line'     => $e->getLine(),
+            ]);
+            app(WaFailureAlertService::class)->notify('wa_order', [
+                'wa_id'    => $order->whatsapp_message_id ?? null,
+                'lang'     => $lang,
+                'source'   => $source,
+                'order'    => $order,
+                'resource' => ['order_id' => $order->id ?? null, 'status' => $order->status ?? null],
+            ], $e);
         }
-        $cart_mail = [
-            'products' => $product_r,
-            'menus'    => $order->menus,
-        ];
-
-        $set   = Setting::on('dynamic')->where('name', 'Contatti')->first();
-        $p_set = json_decode($set->property, true);
-
-        $bodymail = [
-            'type'   => 'or',
-            'to'     => 'user',
-            'lang'   => $lang,
-
-            'title'    => $c_a
-                ? __('admin.controllers.orders.accepted_title')
-                : __('admin.controllers.orders.cancelled_title'),
-            'subtitle' => $order->status == 6
-                ? __('admin.controllers.orders.refund_subtitle')
-                : '',
-
-            'whatsapp_message_id' => $order->whatsapp_message_id,
-            'order_id'            => $order->id,
-            'name'                => $order->name,
-            'surname'             => $order->surname,
-            'email'               => $order->email,
-            'date_slot'           => $order->date_slot,
-            'message'             => $order->message,
-            'phone'               => $order->phone,
-            'admin_phone'         => $p_set['telefono'],
-
-            'comune'    => $order->comune,
-            'address'   => $order->address,
-            'address_n' => $order->address_n,
-
-            'app_domain' => $source->app_domain,
-            'app_url'    => $source->app_url,
-            'app_name'   => $source->app_name,
-
-            'status'      => $order->status,
-            'cart'        => $cart_mail,
-            'total_price' => $order->tot_price,
-        ];
-
-        config()->set([
-            'mail.mailers.smtp.host'         => $source->host,
-            'mail.mailers.smtp.port'         => 465,
-            'mail.mailers.smtp.username'     => $source->username,
-            'mail.mailers.smtp.password'     => $source->token,
-            'mail.mailers.smtp.encryption'   => 'ssl',
-            'mail.mailers.smtp.from.address' => $source->username,
-            'mail.mailers.smtp.from.name'    => $source->app_name,
-        ]);
-
-        Mail::mailer('smtp')
-            ->to($order->email)
-            ->locale($lang)
-            ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
 
         return $m;
     }
@@ -548,7 +585,7 @@ class WaController extends Controller
         app()->setLocale($lang);
 
         $adv_s        = Setting::on('dynamic')->where('name', 'advanced')->first();
-        $property_adv = json_decode($adv_s->property, 1);
+        $property_adv = $adv_s ? json_decode($adv_s->property, 1) : [];
 
         if ($c_a == 1) {
             $res->status = 1;
@@ -566,7 +603,7 @@ class WaController extends Controller
         $res->update();
 
         $set   = DB::connection('dynamic')->table('settings')->where('name', 'Contatti')->first();
-        $p_set = json_decode($set->property, true);
+        $p_set = $set ? json_decode($set->property, true) : [];
 
         $bodymail = [
             'type'     => 'res',
@@ -586,7 +623,7 @@ class WaController extends Controller
             'message'  => $res->message,
             'sala'     => $res->sala,
             'phone'    => $res->phone,
-            'admin_phone' => $p_set['telefono'],
+            'admin_phone' => $p_set['telefono'] ?? '',
 
             'app_domain' => $source->app_domain,
             'app_url'    => $source->app_url,
@@ -616,10 +653,21 @@ class WaController extends Controller
                 ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
 
             Log::info("Email inviata correttamente a {$res->email} da {$source->username}");
-        } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
-            Log::error("Errore SMTP: " . $e->getMessage());
-        } catch (\Exception $e) {
-            Log::error("Errore generico invio mail: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('(WC) Errore in statusRes', [
+                'res_id' => $res->id ?? null,
+                'lang'   => $lang,
+                'error'  => $e->getMessage(),
+                'file'   => $e->getFile(),
+                'line'   => $e->getLine(),
+            ]);
+            app(WaFailureAlertService::class)->notify('wa_reservation', [
+                'wa_id'       => $res->whatsapp_message_id ?? null,
+                'lang'        => $lang,
+                'source'      => $source,
+                'reservation' => $res,
+                'resource'    => ['res_id' => $res->id ?? null, 'status' => $res->status ?? null],
+            ], $e);
         }
 
         return;

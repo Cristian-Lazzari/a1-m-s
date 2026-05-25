@@ -35,6 +35,18 @@ return [
         'status_pending' => '保留中',
     ],
 
+    'wa' => [
+        'order_label'        => 'ご注文は',
+        'res_label'          => 'ご予約は',
+        'confirmed_word'     => '確認されました ✅',
+        'cancelled_word'     => 'キャンセルされました ❌',
+        'colleague'          => 'あなたの同僚',
+        'order_msg_confirmed' => 'ご注文は*あなたの同僚*によって *確認されました* ✅',
+        'order_msg_cancelled' => 'ご注文は*あなたの同僚*によって *キャンセルされました* ❌',
+        'res_msg_confirmed'  => 'ご予約は*あなたの同僚*によって *確認されました* ✅',
+        'res_msg_cancelled'  => 'ご予約は*あなたの同僚*によって *キャンセルされました* ❌',
+    ],
+
     'controllers' => [
         'orders' => [
             'accepted_title' => 'ご注文が受理されたことを確認いたしました。',

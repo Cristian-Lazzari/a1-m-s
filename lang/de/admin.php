@@ -35,6 +35,18 @@ return [
         'status_pending' => 'Ausstehend',
     ],
 
+    'wa' => [
+        'order_label'        => 'Die Bestellung wurde',
+        'res_label'          => 'Die Reservierung wurde',
+        'confirmed_word'     => 'bestätigt ✅',
+        'cancelled_word'     => 'storniert ❌',
+        'colleague'          => 'Ihr Kollege',
+        'order_msg_confirmed' => 'Die Bestellung wurde von *Ihrem Kollegen* *bestätigt* ✅',
+        'order_msg_cancelled' => 'Die Bestellung wurde von *Ihrem Kollegen* *storniert* ❌',
+        'res_msg_confirmed'  => 'Die Reservierung wurde von *Ihrem Kollegen* *bestätigt* ✅',
+        'res_msg_cancelled'  => 'Die Reservierung wurde von *Ihrem Kollegen* *storniert* ❌',
+    ],
+
     'controllers' => [
         'orders' => [
             'accepted_title' => 'Wir bestätigen, dass Ihre Bestellung angenommen wurde.',

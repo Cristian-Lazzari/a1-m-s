@@ -35,6 +35,18 @@ return [
         'status_pending' => 'Pendiente',
     ],
 
+    'wa' => [
+        'order_label'        => 'El pedido ha sido',
+        'res_label'          => 'La reserva ha sido',
+        'confirmed_word'     => 'confirmado ✅',
+        'cancelled_word'     => 'cancelado ❌',
+        'colleague'          => 'tu compañero',
+        'order_msg_confirmed' => 'El pedido ha sido *confirmado* ✅ por *tu compañero*',
+        'order_msg_cancelled' => 'El pedido ha sido *cancelado* ❌ por *tu compañero*',
+        'res_msg_confirmed'  => 'La reserva ha sido *confirmada* ✅ por *tu compañero*',
+        'res_msg_cancelled'  => 'La reserva ha sido *cancelada* ❌ por *tu compañero*',
+    ],
+
     'controllers' => [
         'orders' => [
             'accepted_title' => 'Confirmamos que su pedido ha sido aceptado.',
