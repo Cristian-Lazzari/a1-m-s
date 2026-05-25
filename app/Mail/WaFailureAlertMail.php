@@ -19,10 +19,13 @@ class WaFailureAlertMail extends Mailable
 
     public function build()
     {
-        $restaurant = $this->alert['restaurant']['name'] ?? 'A1MS';
-        $flowLabel  = $this->alert['flow_label'] ?? 'Flusso';
+        $restaurant  = $this->alert['restaurant']['name'] ?? 'A1MS';
+        $flowLabel   = $this->alert['flow_label'] ?? 'Flusso';
+        $fromAddress = config('mail.from.address') ?: env('MAIL_FROM_ADDRESS', 'noreply@dashboardristorante.it');
+        $fromName    = config('mail.from.name') ?: env('MAIL_FROM_NAME', 'A1MS Alert');
 
-        return $this->subject('[ALERT] ' . $flowLabel . ' fallito - ' . $restaurant)
+        return $this->from($fromAddress, $fromName)
+            ->subject('[ALERT] ' . $flowLabel . ' fallito - ' . $restaurant)
             ->view('emails.wa-failure-alert');
     }
 }

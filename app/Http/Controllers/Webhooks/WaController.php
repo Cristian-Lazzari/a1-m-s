@@ -548,7 +548,7 @@ class WaController extends Controller
             Mail::mailer('smtp')
                 ->to($order->email)
                 ->locale($lang)
-                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
+                ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
 
         } catch (\Throwable $e) {
             Log::error('(WC) Errore in statusOrder', [
@@ -650,7 +650,7 @@ class WaController extends Controller
             Mail::mailer('smtp')
                 ->to($res->email)
                 ->locale($lang)
-                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
+                ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
 
             Log::info("Email inviata correttamente a {$res->email} da {$source->username}");
         } catch (\Throwable $e) {

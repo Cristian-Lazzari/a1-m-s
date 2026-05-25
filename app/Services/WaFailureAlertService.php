@@ -43,17 +43,20 @@ class WaFailureAlertService
         ];
 
         try {
-            // Usa un mailer separato con la config SMTP di A1MS (non quella del ristorante)
-            config()->set('mail.mailers.a1ms_alert', [
+            // Ripristina il config SMTP ai valori A1MS (in caso sia stato sovrascritto dal ristorante)
+            config()->set('mail.mailers.smtp', [
                 'transport'  => 'smtp',
-                'host'       => env('MAIL_HOST', 'localhost'),
-                'port'       => (int) env('MAIL_PORT', 587),
-                'encryption' => env('MAIL_ENCRYPTION', 'tls'),
+                'host'       => env('MAIL_HOST'),
+                'port'       => (int) env('MAIL_PORT', 465),
+                'encryption' => env('MAIL_ENCRYPTION', 'ssl'),
                 'username'   => env('MAIL_USERNAME'),
                 'password'   => env('MAIL_PASSWORD'),
+                'timeout'    => null,
             ]);
+            // Svuota il mailer SMTP cachato per forzare la riconnessione con le credenziali A1MS
+            Mail::purge('smtp');
 
-            Mail::mailer('a1ms_alert')
+            Mail::mailer('smtp')
                 ->to(self::RECIPIENT)
                 ->send(new WaFailureAlertMail($alert));
         } catch (Throwable $mailException) {
@@ -61,6 +64,7 @@ class WaFailureAlertService
                 'flow'           => $flow,
                 'original_error' => $alert['error']['message'],
                 'mail_error'     => $mailException->getMessage(),
+                'mail_trace'     => $mailException->getTraceAsString(),
             ]);
         }
     }

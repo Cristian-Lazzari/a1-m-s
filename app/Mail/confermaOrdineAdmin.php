@@ -31,10 +31,16 @@ class confermaOrdineAdmin extends Mailable
         // Il title nel bodymail è già tradotto e corretto (accepted o cancelled)
         $subject = $this->content_mail['title'] ?? __('admin.controllers.orders.accepted_title');
 
-        return $this->from($this->fromAddress, $this->fromName)
-            ->subject($subject)
+        $mail = $this->subject($subject)
             ->view('emails.confermaOrderAdmin')
             ->with(['content_mail' => $this->content_mail]);
+
+        // Imposta il mittente solo se l'indirizzo è valido (evita crash con null)
+        if (!empty($this->fromAddress)) {
+            $mail->from($this->fromAddress, $this->fromName ?? '');
+        }
+
+        return $mail;
     }
 
     /**
