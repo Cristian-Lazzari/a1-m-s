@@ -9,6 +9,7 @@ use Stripe\Stripe;
 use App\Models\Order;
 use App\Models\Source;
 use App\Models\Message;
+use App\Models\Ingredient;
 use App\Models\Setting;
 use Swift_SmtpTransport;
 use App\Models\Reservation;
@@ -239,12 +240,16 @@ class WaController extends Controller
         $messageId = $data['wa_id'];
         $button_r = $data['response'];
 
+        // Legge la lingua dal messaggio salvato; default 'it' per backward compatibility
+        $storedMessage = Message::where('wa_id', $messageId)->first();
+        $lang = $storedMessage->lang ?? 'it';
+
         $order       = Order::on('dynamic')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         $reservation = Reservation::on('dynamic')->where('whatsapp_message_id', 'like', '%' . $messageId . '%')->first();
         if ($order) {
             Log::info("(WC)L' ordine: " . json_encode($order));
             $status = $order->status;
-            $this->statusOrder($button_r, $order, $source);
+            $this->statusOrder($button_r, $order, $source, $lang);
             if($button_r == 1 && in_array($status, [1, 5])){
                 return;
             }elseif($button_r == 0 && in_array($status, [0, 6])){
@@ -259,7 +264,7 @@ class WaController extends Controller
         if ($reservation) {
             if ($reservation) {
                 $status = $reservation->status;
-                $this->statusRes($button_r, $reservation, $source);
+                $this->statusRes($button_r, $reservation, $source, $lang);
                 if($button_r == 1 && in_array($status, [1, 5])){
                     return;
                 }elseif($button_r == 0 && in_array($status, [0, 6])){
@@ -396,65 +401,65 @@ class WaController extends Controller
         }
     }
     
-    protected function statusOrder($c_a, $order, $source){
+    protected function statusOrder($c_a, $order, $source, $lang = 'it')
+    {
         Log::info("(WC) Inizio statusOrder");
-         
-        if($c_a == 1 && in_array($order->status, [1, 5])){
+
+        if ($c_a == 1 && in_array($order->status, [1, 5])) {
             return;
-        }elseif($c_a == 0 && in_array($order->status, [0, 6])){
+        } elseif ($c_a == 0 && in_array($order->status, [0, 6])) {
             return;
-        }elseif(in_array($order->status, [1, 5, 0, 6])){
+        } elseif (in_array($order->status, [1, 5, 0, 6])) {
             return;
         }
-        if($c_a == 1){
-            if($order->status == 2){
+
+        // Imposta la locale per le traduzioni della mail cliente
+        app()->setLocale($lang);
+
+        if ($c_a == 1) {
+            if ($order->status == 2) {
                 $order->status = 1;
-            }elseif($order->status == 3){
+            } elseif ($order->status == 3) {
                 $order->status = 5;
             }
+            // $m è un messaggio interno (log + co-worker WA), resta in italiano
             $m = 'L\'ordine è stata confermato correttamente';
-            $message = 'Grazie ' . $order->name . ' per aver ordinato da noi, ti confermiamo che il tuo ordine sarà pronto per il ' . $order->date_slot;    
-        }else{
-            if(in_array($order->status, [3, 5])){
+        } else {
+            if (in_array($order->status, [3, 5])) {
                 $m = 'L\'ordine è stato annullato e RIMBORSATO correttamente';
-                $message = 'Ci dispiace informarti che purtroppo il tuo ordine è stato annullato e rimborsato';
-                //codice per rimborso
+                // Codice per rimborso Stripe
                 try {
-                    $stripeSecretKey = config('configurazione.STRIPE_SECRET'); 
-                 
-                    // Imposta la chiave segreta di Stripe
+                    $stripeSecretKey = config('configurazione.STRIPE_SECRET');
                     Stripe::setApiKey($stripeSecretKey);
-        
+
                     if ($order->checkout_session_id === null) {
                         return response()->json(['error' => 'Payment not found'], 404);
                     }
-                    // Effettua il rimborso
                     $refund = Refund::create([
-                        'payment_intent' => $order->checkout_session_id, // Questo è l'ID dell'intent di pagamento
+                        'payment_intent' => $order->checkout_session_id,
                     ]);
                     $order->status = 6;
                 } catch (\Exception $e) {
                     return response()->json(['error' => $e->getMessage()], 500);
                 }
-                
-            }elseif(in_array($order->status, [2, 1])){
+            } elseif (in_array($order->status, [2, 1])) {
                 $m = 'L\'ordine è stato annullato correttamente';
-                $message = 'Ci dispiace informarti che purtroppo il tuo ordine è stato annullato';
                 $order->status = 0;
-            }else{
+            } else {
                 $m = 'L\'ordine era già stato annullato!';
-                return; 
+                return;
             }
         }
+
         $order->update();
 
-        //new menu
+        // Costruisce l'elenco prodotti per la mail
         $product_r = [];
         foreach ($order->products as $p) {
-            $arrO = $p->pivot->option !== '[]' ? json_decode($p->pivot->option, true) : [];
-            $arrA = $p->pivot->add !== '[]' ? json_decode($p->pivot->add, true) : [];
+            $arrO     = $p->pivot->option !== '[]' ? json_decode($p->pivot->option, true) : [];
+            $arrA     = $p->pivot->add !== '[]' ? json_decode($p->pivot->add, true) : [];
             $r_option = [];
-            $r_add = [];
+            $r_add    = [];
             foreach ($arrO as $o) {
                 $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
                 $r_option[] = $ingredient;
@@ -469,139 +474,155 @@ class WaController extends Controller
         }
         $cart_mail = [
             'products' => $product_r,
-            'menus' => $order->menus,
+            'menus'    => $order->menus,
         ];
-        $set = Setting::on('dynamic')->where('name', 'Contatti')->first();
-        $p_set = json_decode($set->property, true);
-        $bodymail = [
-            'type' => 'or',
-            'to' => 'user',
-            
-            'title' =>  $c_a ? 'Ti confermiamo che il tuo ordine è stato accettato' : 'Ci dispiace informarti che il tuo ordine è stato annullato',
-            'subtitle' => $order->status == 6 ? 'Il tuo rimborso verrà elaborato in 5-10 gironi lavorativi' : '',
-            'whatsapp_message_id' => $order->whatsapp_message_id,
 
-            'order_id' => $order->id,
-            'name' => $order->name,
-            'surname' => $order->surname,
-            'email' => $order->email,
-            'date_slot' => $order->date_slot,
-            'message' => $order->message,
-            'phone' => $order->phone,
-            'admin_phone' => $p_set['telefono'],
-            
-            'comune' => $order->comune,
-            'address' => $order->address,
+        $set   = Setting::on('dynamic')->where('name', 'Contatti')->first();
+        $p_set = json_decode($set->property, true);
+
+        $bodymail = [
+            'type'   => 'or',
+            'to'     => 'user',
+            'lang'   => $lang,
+
+            'title'    => $c_a
+                ? __('admin.controllers.orders.accepted_title')
+                : __('admin.controllers.orders.cancelled_title'),
+            'subtitle' => $order->status == 6
+                ? __('admin.controllers.orders.refund_subtitle')
+                : '',
+
+            'whatsapp_message_id' => $order->whatsapp_message_id,
+            'order_id'            => $order->id,
+            'name'                => $order->name,
+            'surname'             => $order->surname,
+            'email'               => $order->email,
+            'date_slot'           => $order->date_slot,
+            'message'             => $order->message,
+            'phone'               => $order->phone,
+            'admin_phone'         => $p_set['telefono'],
+
+            'comune'    => $order->comune,
+            'address'   => $order->address,
             'address_n' => $order->address_n,
 
             'app_domain' => $source->app_domain,
-            'app_url' => $source->app_url,
-            'app_name' => $source->app_name,
-            
-            'status' => $order->status,
-            'cart' => $cart_mail,
+            'app_url'    => $source->app_url,
+            'app_name'   => $source->app_name,
+
+            'status'      => $order->status,
+            'cart'        => $cart_mail,
             'total_price' => $order->tot_price,
         ];
-       
-         // Crea un transport dinamico
+
         config()->set([
-            "mail.mailers.smtp.host"       => $source->host,
-            "mail.mailers.smtp.port"       => 465,
-            "mail.mailers.smtp.username"   => $source->username,
-            "mail.mailers.smtp.password"   => $source->token,
-            "mail.mailers.smtp.encryption" => 'ssl',
-            "mail.mailers.smtp.from.address"=> $source->username,
-            "mail.mailers.smtp.from.name"   => $source->app_name,
+            'mail.mailers.smtp.host'         => $source->host,
+            'mail.mailers.smtp.port'         => 465,
+            'mail.mailers.smtp.username'     => $source->username,
+            'mail.mailers.smtp.password'     => $source->token,
+            'mail.mailers.smtp.encryption'   => 'ssl',
+            'mail.mailers.smtp.from.address' => $source->username,
+            'mail.mailers.smtp.from.name'    => $source->app_name,
         ]);
 
-        // // Invio
-        Mail::mailer('smtp')->to($order->email)->locale('it')->send((new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name)));
+        Mail::mailer('smtp')
+            ->to($order->email)
+            ->locale($lang)
+            ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
 
         return $m;
     }
-    protected function statusRes($c_a, $res, $source){
+    protected function statusRes($c_a, $res, $source, $lang = 'it')
+    {
         Log::info("(WC) Inizio statusRes");
-        if($c_a == 1 && in_array($res->status, [1, 5])){
+
+        if ($c_a == 1 && in_array($res->status, [1, 5])) {
             return;
-        }elseif($c_a == 0 && in_array($res->status, [0, 6])){
+        } elseif ($c_a == 0 && in_array($res->status, [0, 6])) {
             return;
-        }elseif(in_array($res->status, [1, 5, 0, 6])){
+        } elseif (in_array($res->status, [1, 5, 0, 6])) {
             return;
         }
-        $adv_s = Setting::on('dynamic')->where('name', 'advanced')->first();
+
+        // Imposta la locale per le traduzioni della mail cliente
+        app()->setLocale($lang);
+
+        $adv_s        = Setting::on('dynamic')->where('name', 'advanced')->first();
         $property_adv = json_decode($adv_s->property, 1);
-        if($c_a == 1){
+
+        if ($c_a == 1) {
             $res->status = 1;
-            $m = 'La prenotazione e\' stata confermata correttamente';
-            $message = 'Siamo felici di informarti che la tua prenotazione e\' stata confermata, ti ricordo la data e l\'orario che hai scelto: ' . $res->date_slot ;
-        }else{
-            if($res->status == 0){
-                $m = 'La prenotazione e\' stata gia annullata correttamente';
+            // $m è un messaggio interno (log + co-worker WA), resta in italiano
+            $m = 'La prenotazione è stata confermata correttamente';
+        } else {
+            if ($res->status == 0) {
+                $m = 'La prenotazione era già stata annullata correttamente';
                 return;
             }
             $res->status = 0;
-            $m = 'La prenotazione e\' stata annullata correttamente';
-            $message = 'Ci spiace informarti che la tua prenotazione e\' stata annullata per la data e l\'orario che hai scelto... ' . $res->date_slot ;
+            $m = 'La prenotazione è stata annullata correttamente';
         }
-        $res->update();
-        
-        $set = DB::connection('dynamic')
-            ->table('settings')
-            ->where('name', 'Contatti')
-            ->first();
-        $p_set = json_decode($set->property, true);
-        $bodymail = [
-            'type' => 'res',
-            'to' => 'user',
 
-            'title' =>  $c_a ? 'Ti confermiamo che la tua prenotazione è stata accettata' : 'Ci dispiace informarti che la tua prenotazione è stata annullata',
+        $res->update();
+
+        $set   = DB::connection('dynamic')->table('settings')->where('name', 'Contatti')->first();
+        $p_set = json_decode($set->property, true);
+
+        $bodymail = [
+            'type'     => 'res',
+            'to'       => 'user',
+            'lang'     => $lang,
+
+            'title'    => $c_a
+                ? __('admin.controllers.reservations.accepted_title_full')
+                : __('admin.controllers.reservations.cancelled_title'),
             'subtitle' => '',
 
-            'res_id' => $res->id,
-            'name' => $res->name,
-            'surname' => $res->surname,
-            'email' => $res->email,
+            'res_id'   => $res->id,
+            'name'     => $res->name,
+            'surname'  => $res->surname,
+            'email'    => $res->email,
             'date_slot' => $res->date_slot,
-            'message' => $res->message,
-            'sala' => $res->sala,
-            'phone' => $res->phone,
+            'message'  => $res->message,
+            'sala'     => $res->sala,
+            'phone'    => $res->phone,
             'admin_phone' => $p_set['telefono'],
 
             'app_domain' => $source->app_domain,
-            'app_url' => $source->app_url,
-            'app_name' => $source->app_name,
-            
+            'app_url'    => $source->app_url,
+            'app_name'   => $source->app_name,
+
             'whatsapp_message_id' => $res->whatsapp_message_id,
-            'n_person' => $res->n_person,
-            'status' => $res->status,
-            
+            'n_person'   => $res->n_person,
+            'status'     => $res->status,
+
             'property_adv' => $property_adv,
         ];
+
         try {
-            // Config dinamica SMTP
             config()->set([
-                "mail.mailers.smtp.host"       => $source->host,
-                "mail.mailers.smtp.port"       => 465,
-                "mail.mailers.smtp.username"   => $source->username,
-                "mail.mailers.smtp.password"   => $source->token,
-                "mail.mailers.smtp.encryption" => 'ssl',
-                "mail.mailers.smtp.from.address"=> $source->username,
-                "mail.mailers.smtp.from.name"   => $source->app_name,
+                'mail.mailers.smtp.host'         => $source->host,
+                'mail.mailers.smtp.port'         => 465,
+                'mail.mailers.smtp.username'     => $source->username,
+                'mail.mailers.smtp.password'     => $source->token,
+                'mail.mailers.smtp.encryption'   => 'ssl',
+                'mail.mailers.smtp.from.address' => $source->username,
+                'mail.mailers.smtp.from.name'    => $source->app_name,
             ]);
 
-            // Invio mail
-            Mail::mailer('smtp')->to($res->email)->locale('it')
-                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name));
+            Mail::mailer('smtp')
+                ->to($res->email)
+                ->locale($lang)
+                ->send(new confermaOrdineAdmin($bodymail, $source->from_address, $source->from_name, $lang));
 
             Log::info("Email inviata correttamente a {$res->email} da {$source->username}");
-
         } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
-            Log::error("Errore SMTP: ".$e->getMessage());
+            Log::error("Errore SMTP: " . $e->getMessage());
         } catch (\Exception $e) {
-            Log::error("Errore generico invio mail: ".$e->getMessage());
+            Log::error("Errore generico invio mail: " . $e->getMessage());
         }
 
-        return;   
+        return;
     }
 
     protected function isLastResponseWaWithin24Hours($p)
