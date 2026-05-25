@@ -60,11 +60,20 @@ class WaFailureAlertService
                 ->to(self::RECIPIENT)
                 ->send(new WaFailureAlertMail($alert));
         } catch (Throwable $mailException) {
-            Log::error('(WaFailureAlertService) Invio mail di allerta fallito', [
+            Log::critical('(WaFailureAlertService) Invio mail di allerta fallito', [
                 'flow'           => $flow,
+                'wa_id'          => $alert['wa_id'] ?? null,
+                'restaurant'     => $alert['restaurant'] ?? [],
+                'customer'       => $alert['customer'] ?? [],
+                'resource'       => $alert['resource'] ?? [],
                 'original_error' => $alert['error']['message'],
+                'original_file'  => $alert['error']['file'] ?? null,
+                'original_line'  => $alert['error']['line'] ?? null,
+                'original_trace' => collect(explode("\n", (string) ($alert['trace'] ?? '')))->take(8)->all(),
                 'mail_error'     => $mailException->getMessage(),
-                'mail_trace'     => $mailException->getTraceAsString(),
+                'mail_file'      => $mailException->getFile(),
+                'mail_line'      => $mailException->getLine(),
+                'mail_trace'     => collect($mailException->getTrace())->take(8)->all(),
             ]);
         }
     }

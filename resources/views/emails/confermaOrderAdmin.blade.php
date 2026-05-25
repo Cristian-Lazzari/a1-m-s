@@ -1,5 +1,6 @@
 @php
     use Carbon\Carbon;
+    use Illuminate\Support\Facades\Log;
 
     $lang = $content_mail['lang'] ?? 'it';
 
@@ -55,6 +56,62 @@
     // Formattatore prezzi locale — in A1MS non esiste App\Support\Currency
     $formatPrice = static function ($value): string {
         return '€' . number_format((float) ($value ?? 0), 2, ',', '.');
+    };
+
+    $decodeModifierArray = static function ($value, string $modifierType = 'remove'): array {
+        if (is_array($value)) {
+            return array_values($value);
+        }
+
+        if ($value === null) {
+            return [];
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '[]') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            Log::warning('(A1MS mail) JSON modifiche ordine non valido in view', [
+                'modifier_type' => $modifierType,
+                'json_error' => json_last_error_msg(),
+                'raw' => substr($raw, 0, 500),
+            ]);
+
+            return [];
+        }
+
+        return array_values($decoded);
+    };
+
+    $modifierItems = static function ($value) {
+        return collect($value ?? [])->filter(static function ($item) {
+            return trim((string) data_get($item, 'name', '')) !== '';
+        })->values();
+    };
+
+    $modifierName = static function ($item): string {
+        return trim((string) data_get($item, 'name', ''));
+    };
+
+    $modifierText = static function ($item): string {
+        if (is_array($item) || is_object($item)) {
+            return trim((string) (
+                data_get($item, 'name')
+                ?? data_get($item, 'title')
+                ?? data_get($item, 'label')
+                ?? data_get($item, 'value')
+                ?? ''
+            ));
+        }
+
+        return trim((string) $item);
+    };
+
+    $modifierPrice = static function ($item): float {
+        return (float) data_get($item, 'price', 0);
     };
 @endphp
 <!DOCTYPE html>
@@ -173,6 +230,9 @@
 
                     <!-- ---- MENU ---- -->
                     @foreach ($content_mail['cart']['menus'] as $i)
+                    @php
+                        $menuQuantity = data_get($i, 'pivot.quantity', 1);
+                    @endphp
                     <tr>
                         <td style="padding:0 40px 10px;">
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
@@ -196,11 +256,11 @@
                                                     <p style="color:#9ca3af; font-size:11px; margin:0;">{{ __('admin.common.menu') }}</p>
                                                 </td>
                                                 <td valign="top" align="right" style="white-space:nowrap; padding-left:10px;">
-                                                    @if ($i->pivot->quantity > 1)
+                                                    @if ($menuQuantity > 1)
                                                         <span style="display:inline-block; background-color:#0f0b2e; color:#fff;
                                                                      font-size:10px; font-weight:800; padding:2px 8px;
                                                                      border-radius:10px; margin-bottom:4px;">
-                                                            &times;{{ $i->pivot->quantity }}
+                                                            &times;{{ $menuQuantity }}
                                                         </span><br>
                                                     @endif
                                                     <span style="color:#0f0b2e; font-size:15px; font-weight:700; font-family:monospace;">
@@ -213,7 +273,7 @@
                                         @if ($i->fixed_menu == '2')
                                             @php
                                                 $right_c = [];
-                                                $scelti  = json_decode($i->pivot->choices);
+                                                $scelti  = $decodeModifierArray(data_get($i, 'pivot.choices'), 'menu_choices');
                                                 foreach ($scelti as $choiceId) {
                                                     foreach ($i->products as $p) {
                                                         if ($p->id == $choiceId) { $right_c[] = $p; break; }
@@ -234,16 +294,16 @@
                                                             <tr>
                                                                 <td>
                                                                     <p style="color:#374151; font-size:13px; margin:0;">
-                                                                        <strong style="color:#0f0b2e;">{{ $c->pivot->label }}:</strong>
+                                                                        <strong style="color:#0f0b2e;">{{ data_get($c, 'pivot.label') }}:</strong>
                                                                         {{ $c->name }}
-                                                                        <span style="color:#9ca3af;">({{ $c->category->name }})</span>
+                                                                        <span style="color:#9ca3af;">({{ data_get($c, 'category.name', '') }})</span>
                                                                     </p>
                                                                 </td>
-                                                                @if ($c->pivot->extra_price)
+                                                                @if (data_get($c, 'pivot.extra_price'))
                                                                 <td align="right" style="white-space:nowrap; padding-left:8px;">
                                                                     <p style="color:#15803d; font-size:13px; font-weight:700;
                                                                                font-family:monospace; margin:0;">
-                                                                        +{{ $formatPrice($c->pivot->extra_price) }}
+                                                                        +{{ $formatPrice(data_get($c, 'pivot.extra_price')) }}
                                                                     </p>
                                                                 </td>
                                                                 @endif
@@ -265,7 +325,7 @@
                                                         @foreach ($i->products as $c)
                                                             <p style="color:#374151; font-size:13px; margin:2px 0;">
                                                                 {{ $c->name }}
-                                                                <span style="color:#9ca3af;">({{ $c->category->name }})</span>
+                                                                <span style="color:#9ca3af;">({{ data_get($c, 'category.name', '') }})</span>
                                                             </p>
                                                         @endforeach
                                                     </td>
@@ -283,8 +343,10 @@
                     <!-- ---- PRODOTTI ---- -->
                     @foreach ($content_mail['cart']['products'] as $i)
                     @php
-                        $rawRemove = $i->pivot->remove ?? null;
-                        $arrD = (!empty($rawRemove) && $rawRemove !== '[]') ? (json_decode($rawRemove) ?? []) : [];
+                        $quantity = data_get($i, 'pivot.quantity', 1);
+                        $rOption = $modifierItems($i->r_option ?? []);
+                        $rAdd = $modifierItems($i->r_add ?? []);
+                        $arrD = $i->r_remove ?? $decodeModifierArray(data_get($i, 'pivot.remove'), 'remove');
                     @endphp
                     <tr>
                         <td style="padding:0 40px 10px;">
@@ -309,11 +371,11 @@
                                                     <p style="color:#9ca3af; font-size:11px; margin:0;">{{ __('admin.common.product') }}</p>
                                                 </td>
                                                 <td valign="top" align="right" style="white-space:nowrap; padding-left:10px;">
-                                                    @if ($i->pivot->quantity > 1)
+                                                    @if ($quantity > 1)
                                                         <span style="display:inline-block; background-color:#0f0b2e; color:#fff;
                                                                      font-size:10px; font-weight:800; padding:2px 8px;
                                                                      border-radius:10px; margin-bottom:4px;">
-                                                            &times;{{ $i->pivot->quantity }}
+                                                            &times;{{ $quantity }}
                                                         </span><br>
                                                     @endif
                                                     <span style="color:#0f0b2e; font-size:15px; font-weight:700; font-family:monospace;">
@@ -323,29 +385,29 @@
                                             </tr>
                                         </table>
 
-                                        @if (count($i->r_option) || count($i->r_add) || count($arrD))
+                                        @if ($rOption->isNotEmpty() || $rAdd->isNotEmpty() || count($arrD))
                                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
                                                style="margin-top:10px; border-top:1px solid #e5e7eb;">
                                             <tr>
                                                 <td style="padding-top:8px;">
 
-                                                    @if (count($i->r_option))
+                                                    @if ($rOption->isNotEmpty())
                                                         <p style="color:#6b7280; font-size:10px; text-transform:uppercase;
                                                                    letter-spacing:0.08em; font-weight:700; margin:0 0 4px;">
                                                             {{ __('admin.Opzioni') }}
                                                         </p>
-                                                        @foreach ($i->r_option as $a)
+                                                        @foreach ($rOption as $a)
                                                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
                                                                style="margin-bottom:3px;">
                                                             <tr>
                                                                 <td>
-                                                                    <p style="color:#374151; font-size:13px; margin:0;">{{ $a->name }}</p>
+                                                                    <p style="color:#374151; font-size:13px; margin:0;">{{ $modifierName($a) }}</p>
                                                                 </td>
-                                                                @if ($a->price)
+                                                                @if ($modifierPrice($a))
                                                                 <td align="right" style="white-space:nowrap; padding-left:8px;">
                                                                     <p style="color:#15803d; font-size:13px; font-weight:700;
                                                                                font-family:monospace; margin:0;">
-                                                                        +{{ $formatPrice($a->price) }}
+                                                                        +{{ $formatPrice($modifierPrice($a)) }}
                                                                     </p>
                                                                 </td>
                                                                 @endif
@@ -354,23 +416,23 @@
                                                         @endforeach
                                                     @endif
 
-                                                    @if (count($i->r_add))
+                                                    @if ($rAdd->isNotEmpty())
                                                         <p style="color:#6b7280; font-size:10px; text-transform:uppercase;
-                                                                   letter-spacing:0.08em; font-weight:700; margin:{{ count($i->r_option) ? '10px' : '0' }} 0 4px;">
+                                                                   letter-spacing:0.08em; font-weight:700; margin:{{ $rOption->isNotEmpty() ? '10px' : '0' }} 0 4px;">
                                                             {{ __('admin.Ingredienti_extra') }}
                                                         </p>
-                                                        @foreach ($i->r_add as $a)
+                                                        @foreach ($rAdd as $a)
                                                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
                                                                style="margin-bottom:3px;">
                                                             <tr>
                                                                 <td>
-                                                                    <p style="color:#374151; font-size:13px; margin:0;">+ {{ $a->name }}</p>
+                                                                    <p style="color:#374151; font-size:13px; margin:0;">+ {{ $modifierName($a) }}</p>
                                                                 </td>
-                                                                @if ($a->price)
+                                                                @if ($modifierPrice($a))
                                                                 <td align="right" style="white-space:nowrap; padding-left:8px;">
                                                                     <p style="color:#15803d; font-size:13px; font-weight:700;
                                                                                font-family:monospace; margin:0;">
-                                                                        +{{ $formatPrice($a->price) }}
+                                                                        +{{ $formatPrice($modifierPrice($a)) }}
                                                                     </p>
                                                                 </td>
                                                                 @endif
@@ -381,12 +443,12 @@
 
                                                     @if (count($arrD))
                                                         <p style="color:#6b7280; font-size:10px; text-transform:uppercase;
-                                                                   letter-spacing:0.08em; font-weight:700; margin:{{ (count($i->r_option) || count($i->r_add)) ? '10px' : '0' }} 0 4px;">
+                                                                   letter-spacing:0.08em; font-weight:700; margin:{{ ($rOption->isNotEmpty() || $rAdd->isNotEmpty()) ? '10px' : '0' }} 0 4px;">
                                                             {{ __('admin.Ingredienti_rimossi') }}
                                                         </p>
                                                         @foreach ($arrD as $a)
                                                             <p style="color:#b91c1c; font-size:13px; margin:2px 0;">
-                                                                &minus; {{ $a }}
+                                                                &minus; {{ $modifierText($a) }}
                                                             </p>
                                                         @endforeach
                                                     @endif

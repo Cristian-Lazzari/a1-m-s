@@ -24,6 +24,7 @@ use App\Services\WaFailureAlertService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 
@@ -45,6 +46,11 @@ class WaController extends Controller
     // Metodo per gestire i webhook
     public function handle(Request $request)
     {
+        $data = [];
+        $messageId = null;
+        $source = null;
+
+        try {
         $data = $request->all();
         Log::info("Webhook ricevuto", $data);
 
@@ -122,11 +128,57 @@ class WaController extends Controller
             'response' => $responseValue,
         ];
 
-        $this->handle_p2($payload, $source);
-        DB::disconnect('mysql');
-        Config::set("database.connections.mysql", config('database.connections.mysql'));
+        try {
+            $this->handle_p2($payload, $source);
+        } catch (\Throwable $e) {
+            Log::error('(WC) Errore nel flusso webhook prima/durante handle_p2', [
+                'wa_id' => $messageId,
+                'source_id' => $source->id ?? null,
+                'response' => $responseValue,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => collect($e->getTrace())->take(5)->all(),
+            ]);
+
+            app(WaFailureAlertService::class)->notify('wa_webhook', [
+                'wa_id' => $messageId,
+                'lang' => $storedMessage->lang ?? 'it',
+                'source' => $source,
+                'resource' => [
+                    'message_model_id' => $storedMessage->id ?? null,
+                    'source_id' => $source->id ?? null,
+                    'response' => $responseValue,
+                    'incoming_type' => $incomingMessage['type'] ?? null,
+                ],
+            ], $e);
+        } finally {
+            DB::disconnect('mysql');
+            Config::set("database.connections.mysql", config('database.connections.mysql'));
+        }
 
         return response('EVENT_RECEIVED', 200);
+        } catch (\Throwable $e) {
+            Log::error('(WC) Errore non gestito in handle webhook', [
+                'wa_id' => $messageId,
+                'source_id' => $source->id ?? null,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => collect($e->getTrace())->take(5)->all(),
+            ]);
+
+            app(WaFailureAlertService::class)->notify('wa_webhook', [
+                'wa_id' => $messageId,
+                'source' => $source,
+                'resource' => [
+                    'payload_keys' => array_keys($data),
+                    'entry_count' => is_countable($data['entry'] ?? null) ? count($data['entry']) : null,
+                ],
+            ], $e);
+
+            return response('EVENT_RECEIVED', 200);
+        }
     }
 
     protected function extractWhatsappReplyAction(array $incomingMessage, Message $storedMessage): ?array
@@ -427,68 +479,73 @@ class WaController extends Controller
 
         // Imposta la locale per le traduzioni della mail cliente
         app()->setLocale($lang);
+        $m = null;
 
-        if ($c_a == 1) {
-            if ($order->status == 2) {
-                $order->status = 1;
-            } elseif ($order->status == 3) {
-                $order->status = 5;
-            }
-            // $m è un messaggio interno (log + co-worker WA), resta in italiano
-            $m = 'L\'ordine è stata confermato correttamente';
-        } else {
-            if (in_array($order->status, [3, 5])) {
-                $m = 'L\'ordine è stato annullato e RIMBORSATO correttamente';
-                // Codice per rimborso Stripe
-                try {
+        try {
+            if ($c_a == 1) {
+                if ($order->status == 2) {
+                    $order->status = 1;
+                } elseif ($order->status == 3) {
+                    $order->status = 5;
+                }
+                // $m è un messaggio interno (log + co-worker WA), resta in italiano
+                $m = 'L\'ordine è stata confermato correttamente';
+            } else {
+                if (in_array($order->status, [3, 5])) {
+                    $m = 'L\'ordine è stato annullato e RIMBORSATO correttamente';
+                    // Codice per rimborso Stripe
                     $stripeSecretKey = config('configurazione.STRIPE_SECRET');
                     Stripe::setApiKey($stripeSecretKey);
 
                     if ($order->checkout_session_id === null) {
-                        return response()->json(['error' => 'Payment not found'], 404);
+                        throw new \RuntimeException('Payment not found for refundable order');
                     }
                     $refund = Refund::create([
                         'payment_intent' => $order->checkout_session_id,
                     ]);
                     $order->status = 6;
-                } catch (\Exception $e) {
-                    return response()->json(['error' => $e->getMessage()], 500);
+                } elseif (in_array($order->status, [2, 1])) {
+                    $m = 'L\'ordine è stato annullato correttamente';
+                    $order->status = 0;
+                } else {
+                    $m = 'L\'ordine era già stato annullato!';
+                    return $m;
                 }
-            } elseif (in_array($order->status, [2, 1])) {
-                $m = 'L\'ordine è stato annullato correttamente';
-                $order->status = 0;
-            } else {
-                $m = 'L\'ordine era già stato annullato!';
-                return;
             }
-        }
 
-        $order->update();
+            $order->update();
 
-        try {
             // Costruisce l'elenco prodotti per la mail
             $product_r = [];
             foreach ($order->products as $p) {
                 $rawO = $p->pivot->option ?? null;
                 $rawA = $p->pivot->add    ?? null;
-                $arrO = (!empty($rawO) && $rawO !== '[]') ? (json_decode($rawO, true) ?? []) : [];
-                $arrA = (!empty($rawA) && $rawA !== '[]') ? (json_decode($rawA, true) ?? []) : [];
+                $rawR = $p->pivot->remove ?? null;
+                $arrO = $this->decodeDynamicModifierJsonArray($rawO, 'option', $order, $p);
+                $arrA = $this->decodeDynamicModifierJsonArray($rawA, 'add', $order, $p);
+                $arrR = $this->decodeDynamicModifierJsonArray($rawR, 'remove', $order, $p);
                 $r_option = [];
                 $r_add    = [];
+
+                if ($arrO || $arrA || $arrR) {
+                    Log::info('(WC) Risoluzione modifiche ordine', [
+                        'order_id' => $order->id ?? null,
+                        'product_id' => $p->id ?? null,
+                        'option' => $arrO,
+                        'add' => $arrA,
+                        'remove' => $arrR,
+                    ]);
+                }
+
                 foreach ($arrO as $o) {
-                    $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
-                    if ($ingredient !== null) {
-                        $r_option[] = $ingredient;
-                    }
+                    $this->appendResolvedDynamicIngredient($r_option, $o, 'option', $order, $p);
                 }
                 foreach ($arrA as $o) {
-                    $ingredient = Ingredient::on('dynamic')->where('name', $o)->first();
-                    if ($ingredient !== null) {
-                        $r_add[] = $ingredient;
-                    }
+                    $this->appendResolvedDynamicIngredient($r_add, $o, 'add', $order, $p);
                 }
                 $p->setAttribute('r_option', $r_option);
                 $p->setAttribute('r_add', $r_add);
+                $p->setAttribute('r_remove', $arrR);
                 $product_r[] = $p;
             }
             $cart_mail = [
@@ -553,22 +610,182 @@ class WaController extends Controller
         } catch (\Throwable $e) {
             Log::error('(WC) Errore in statusOrder', [
                 'order_id' => $order->id ?? null,
+                'response' => $c_a,
                 'lang'     => $lang,
+                'source' => [
+                    'id' => $source->id ?? null,
+                    'db_name' => $source->db_name ?? null,
+                    'app_name' => $source->app_name ?? null,
+                    'username' => $source->username ?? null,
+                ],
+                'modifiers' => $this->orderModifierLogContext($order),
                 'error'    => $e->getMessage(),
                 'file'     => $e->getFile(),
                 'line'     => $e->getLine(),
+                'trace'    => collect($e->getTrace())->take(5)->all(),
             ]);
             app(WaFailureAlertService::class)->notify('wa_order', [
                 'wa_id'    => $order->whatsapp_message_id ?? null,
                 'lang'     => $lang,
                 'source'   => $source,
                 'order'    => $order,
-                'resource' => ['order_id' => $order->id ?? null, 'status' => $order->status ?? null],
+                'resource' => [
+                    'order_id' => $order->id ?? null,
+                    'status' => $order->status ?? null,
+                    'response' => $c_a,
+                    'modifiers' => $this->orderModifierLogContext($order),
+                ],
             ], $e);
         }
 
         return $m;
     }
+
+    private function decodeDynamicModifierJsonArray(mixed $value, string $modifierType, $order = null, $product = null): array
+    {
+        if (is_array($value)) {
+            return array_values($value);
+        }
+
+        if ($value === null) {
+            return [];
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '[]') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            Log::warning('(WC) JSON modifiche ordine non valido; continuo senza bloccare la mail', [
+                'modifier_type' => $modifierType,
+                'order_id' => $order->id ?? null,
+                'product_id' => $product->id ?? null,
+                'json_error' => json_last_error_msg(),
+                'raw' => Str::limit($raw, 500),
+            ]);
+
+            return [];
+        }
+
+        return array_values($decoded);
+    }
+
+    private function modifierNameFromValue(mixed $value): string
+    {
+        if (is_array($value)) {
+            return trim((string) ($value['name'] ?? $value['title'] ?? $value['label'] ?? $value['value'] ?? ''));
+        }
+
+        if (is_object($value)) {
+            return trim((string) ($value->name ?? $value->title ?? $value->label ?? $value->value ?? ''));
+        }
+
+        return trim((string) $value);
+    }
+
+    private function orderModifierLogContext($order): array
+    {
+        try {
+            return collect($order->products ?? [])->map(function ($product) {
+                return [
+                    'product_id' => $product->id ?? null,
+                    'product_name' => $product->name ?? null,
+                    'add' => $product->pivot->add ?? null,
+                    'remove' => $product->pivot->remove ?? null,
+                    'option' => $product->pivot->option ?? null,
+                ];
+            })->values()->all();
+        } catch (\Throwable $e) {
+            return [
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    private function appendResolvedDynamicIngredient(array &$items, mixed $name, string $modifierType, $order, $product): void
+    {
+        $ingredientName = $this->modifierNameFromValue($name);
+
+        if ($ingredientName === '') {
+            Log::warning('(WC) Modifica ordine ignorata: nome ingrediente/opzione vuoto', [
+                'modifier_type' => $modifierType,
+                'order_id' => $order->id ?? null,
+                'product_id' => $product->id ?? null,
+            ]);
+
+            return;
+        }
+
+        $ingredient = $this->findIngredientOnDynamicByName($ingredientName);
+
+        if ($ingredient === null) {
+            Log::warning('(WC) Ingrediente/opzione non trovato su dynamic; continuo senza bloccare la mail', [
+                'modifier_type' => $modifierType,
+                'name' => $ingredientName,
+                'order_id' => $order->id ?? null,
+                'product_id' => $product->id ?? null,
+            ]);
+
+            $items[] = (object) [
+                'name' => $ingredientName,
+                'price' => 0,
+                'missing' => true,
+            ];
+
+            return;
+        }
+
+        $items[] = $ingredient;
+    }
+
+    private function findIngredientOnDynamicByName(?string $name): ?Ingredient
+    {
+        $name = trim((string) $name);
+
+        if ($name === '') {
+            return null;
+        }
+
+        try {
+            if (!Schema::connection('dynamic')->hasTable('ingredients')) {
+                Log::warning('(WC) Tabella ingredients non trovata su dynamic', [
+                    'name' => $name,
+                ]);
+
+                return null;
+            }
+
+            if (Schema::connection('dynamic')->hasTable('ingredient_translations')) {
+                $ingredient = Ingredient::on('dynamic')
+                    ->join('ingredient_translations', 'ingredient_translations.ingredient_id', '=', 'ingredients.id')
+                    ->select('ingredients.*')
+                    ->addSelect('ingredient_translations.name as name')
+                    ->where('ingredient_translations.name', $name)
+                    ->distinct()
+                    ->first();
+
+                if ($ingredient !== null) {
+                    return $ingredient;
+                }
+            }
+
+            if (Schema::connection('dynamic')->hasColumn('ingredients', 'name')) {
+                return Ingredient::on('dynamic')->where('name', $name)->first();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('(WC) Errore risoluzione ingrediente/opzione su dynamic; continuo senza bloccare la mail', [
+                'name' => $name,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+        }
+
+        return null;
+    }
+
     protected function statusRes($c_a, $res, $source, $lang = 'it')
     {
         Log::info("(WC) Inizio statusRes");
