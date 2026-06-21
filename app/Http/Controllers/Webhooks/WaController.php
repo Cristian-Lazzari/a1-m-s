@@ -286,7 +286,6 @@ class WaController extends Controller
             $this->updateLastResponseWa($p);
             Log::info("Co1 ==> {$p}");
             $p = $p == 0 ? 1 : 0;
-            $this->updateLastResponseWa($p);
             Log::info("Co2 ==> {$p}");
             $number_correct = $numbers[$p];
         }else{
@@ -445,15 +444,54 @@ class WaController extends Controller
             }
     
             $url = 'https://graph.facebook.com/v24.0/' . config('configurazione.WA_ID') . '/messages';
-            
-            $response = Http::withHeaders([
+
+            $headers = [
                 'Authorization' => config('configurazione.WA_TO'),
-                'Content-Type' => 'application/json'
-            ])->post($url, $data);
+                'Content-Type' => 'application/json',
+            ];
+
+            $response = Http::withHeaders($headers)->post($url, $data);
 
             // Log della risposta ricevuta
             Log::info("(WC) Risposta da WhatsApp:", ['response' => $response->json()]);
-    
+
+            // Se il messaggio testuale fallisce (finestra 24h non aperta), fallback al template
+            if (!$response->successful() && $type_m_1 === 0) {
+                Log::warning("(WC) Messaggio testuale rifiutato da WhatsApp, fallback al template co-worker", [
+                    'status' => $response->status(),
+                    'response' => $response->json(),
+                    'number' => $number,
+                ]);
+
+                $templateData = [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $number,
+                    'recipient_type' => 'individual',
+                    'type' => 'template',
+                    'template' => [
+                        'name' => 'response_link',
+                        'language' => ['code' => 'it'],
+                        'components' => [
+                            [
+                                'type' => 'body',
+                                'parameters' => [
+                                    ['type' => 'text', 'text' => $sub],
+                                    ['type' => 'text', 'text' => $word],
+                                    ['type' => 'text', 'text' => $colleague],
+                                    ['type' => 'text', 'text' => $or_res->name . ' ' . $or_res->surname],
+                                    ['type' => 'text', 'text' => $or_res->date_slot],
+                                    ['type' => 'text', 'text' => $link_id],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'context' => ['message_id' => $old_id],
+                ];
+
+                $response = Http::withHeaders($headers)->post($url, $templateData);
+                Log::info("(WC) Risposta fallback template co-worker:", ['response' => $response->json()]);
+            }
+
             return $response->json();
         } catch (Exception $e) {
             Log::error("(WC) Errore in message_co_worker", [
