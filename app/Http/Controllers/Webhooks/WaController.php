@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
 use App\Services\WaFailureAlertService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
@@ -52,16 +53,25 @@ class WaController extends Controller
 
         try {
         $data = $request->all();
-        Log::info("Webhook ricevuto", $data);
+
+        // Il payload si scrive come stringa JSON. Passandolo come contesto,
+        // Monolog lo normalizza e taglia tutto oltre il nono livello: proprio
+        // dove stanno gli errori di WhatsApp, che infatti nel log comparivano
+        // come "Over 9 levels deep, aborting normalization".
+        Log::info('Webhook ricevuto: ' . $this->encodePayload($data));
 
         $incomingMessage = data_get($data, 'entry.0.changes.0.value.messages.0');
 
         if (!$incomingMessage) {
-            Log::info("Struttura del messaggio non valida o messaggio mancante.");
+            // Le ricevute di consegna non sono messaggi, e finivano tutte fra
+            // le "strutture non valide": è lì dentro che WhatsApp segnala gli
+            // invii falliti, che così non li vedeva nessuno.
+            $this->handleStatusCallback($data);
+
             return response('EVENT_RECEIVED', 200);
         }
 
-        Log::info("Messaggio webhook normalizzato:", $incomingMessage);
+        Log::info('Messaggio webhook normalizzato: ' . $this->encodePayload($incomingMessage));
 
         $messageId = data_get($incomingMessage, 'context.id');
         if (!$messageId) {
@@ -926,6 +936,120 @@ class WaController extends Controller
         }
 
         return;
+    }
+
+    /**
+     * JSON completo e leggibile per il log: nessun troncamento in profondità,
+     * al contrario di quello che fa Monolog con gli array di contesto.
+     */
+    protected function encodePayload($value): string
+    {
+        $json = json_encode(
+            $value,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR
+        );
+
+        return $json !== false ? $json : '[payload non serializzabile]';
+    }
+
+    /**
+     * Ricevute di consegna di WhatsApp (sent, delivered, read, failed).
+     *
+     * Gli invii falliti sono la ragione per cui un cliente non riceve né il
+     * messaggio né, di conseguenza, la mail di conferma: qui vengono presi e
+     * segnalati subito a info@future-plus.it con l'errore per esteso.
+     */
+    protected function handleStatusCallback(array $data): void
+    {
+        $statuses = data_get($data, 'entry.0.changes.0.value.statuses');
+
+        if (!is_array($statuses) || $statuses === []) {
+            // Né messaggi né ricevute: questo sì che è un payload inatteso.
+            Log::warning('(WC) Webhook senza messaggi né ricevute: ' . $this->encodePayload($data));
+
+            return;
+        }
+
+        foreach ($statuses as $status) {
+            if (data_get($status, 'status') !== 'failed') {
+                continue; // sent, delivered e read sono normale amministrazione
+            }
+
+            $waId = data_get($status, 'id');
+            $recipient = data_get($status, 'recipient_id');
+            $errors = data_get($status, 'errors', []);
+            $reason = $this->describeStatusErrors($errors);
+
+            Log::error('(WC) Invio WhatsApp fallito: ' . $this->encodePayload([
+                'wa_id' => $waId,
+                'recipient' => $recipient,
+                'reason' => $reason,
+                'errors' => $errors,
+            ]));
+
+            // WhatsApp ripete i webhook: senza questo blocco la stessa
+            // consegna fallita manderebbe la stessa mail più volte.
+            $alertKey = 'wa_failed_alert:' . ($waId ?: md5($this->encodePayload($status)));
+
+            if (!Cache::add($alertKey, 1, now()->addHours(6))) {
+                continue;
+            }
+
+            // Il ristorante di appartenenza è un di più: se il database non
+            // risponde l'avviso deve partire lo stesso, magari più scarno.
+            $storedMessage = null;
+            $source = null;
+
+            try {
+                $storedMessage = $waId ? Message::where('wa_id', $waId)->first() : null;
+                $source = $storedMessage ? Source::find($storedMessage->source) : null;
+            } catch (\Throwable $lookupException) {
+                Log::error('(WC) Consegna fallita: non risalgo al ristorante: '
+                    . $lookupException->getMessage());
+            }
+
+            app(WaFailureAlertService::class)->notify('wa_delivery', [
+                'wa_id' => $waId,
+                'lang' => $storedMessage->lang ?? 'it',
+                'source' => $source,
+                'error_type' => 'whatsapp_delivery_failed',
+                'message' => $reason,
+                'resource' => [
+                    'recipient' => $recipient,
+                    'message_type' => $storedMessage->type ?? null,
+                    'errors' => $errors,
+                ],
+            ]);
+        }
+    }
+
+    /** Riassume in una riga gli errori che WhatsApp allega alla ricevuta. */
+    protected function describeStatusErrors($errors): string
+    {
+        if (!is_array($errors) || $errors === []) {
+            return 'WhatsApp non ha consegnato il messaggio e non ha indicato un motivo.';
+        }
+
+        $parts = [];
+
+        foreach ($errors as $error) {
+            if (is_string($error)) {
+                $parts[] = $error;
+                continue;
+            }
+
+            $code = data_get($error, 'code');
+            $title = data_get($error, 'title') ?: data_get($error, 'message');
+            $detail = data_get($error, 'error_data.details');
+
+            $parts[] = trim(
+                ($code !== null ? "[$code] " : '')
+                . (string) $title
+                . ($detail ? ' — ' . $detail : '')
+            );
+        }
+
+        return implode(' | ', array_filter($parts)) ?: 'Errore non specificato da WhatsApp.';
     }
 
     protected function isLastResponseWaWithin24Hours($p)

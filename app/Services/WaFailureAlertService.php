@@ -53,14 +53,24 @@ class WaFailureAlertService
                 'password'   => env('MAIL_PASSWORD'),
                 'timeout'    => null,
             ]);
-            // Svuota il mailer SMTP cachato per forzare la riconnessione con le credenziali A1MS
-            Mail::purge('smtp');
+            // Svuota il mailer SMTP cachato per forzare la riconnessione con le
+            // credenziali A1MS. Se non è possibile non si rinuncia all'avviso:
+            // è l'ultima cosa che ci avvisa che qualcosa non va.
+            try {
+                Mail::purge('smtp');
+            } catch (Throwable $purgeException) {
+                Log::warning('(WaFailureAlertService) Impossibile svuotare il mailer: '
+                    . $purgeException->getMessage());
+            }
 
             Mail::mailer('smtp')
                 ->to(self::RECIPIENT)
                 ->send(new WaFailureAlertMail($alert));
         } catch (Throwable $mailException) {
-            Log::critical('(WaFailureAlertService) Invio mail di allerta fallito', [
+            // Quando salta anche l'avviso, il log è l'unica cosa che resta:
+            // si scrive come stringa JSON, perché passando un array Monolog
+            // lo normalizza e taglia tutto oltre il nono livello.
+            Log::critical('(WaFailureAlertService) Invio mail di allerta fallito: ' . json_encode([
                 'flow'           => $flow,
                 'wa_id'          => $alert['wa_id'] ?? null,
                 'restaurant'     => $alert['restaurant'] ?? [],
@@ -73,8 +83,7 @@ class WaFailureAlertService
                 'mail_error'     => $mailException->getMessage(),
                 'mail_file'      => $mailException->getFile(),
                 'mail_line'      => $mailException->getLine(),
-                'mail_trace'     => collect($mailException->getTrace())->take(8)->all(),
-            ]);
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR));
         }
     }
 
@@ -83,6 +92,7 @@ class WaFailureAlertService
         return match ($flow) {
             'wa_order'       => 'WA Ordine',
             'wa_reservation' => 'WA Prenotazione',
+            'wa_delivery'    => 'WA Consegna fallita',
             default          => ucfirst(str_replace('_', ' ', $flow)),
         };
     }
