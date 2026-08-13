@@ -334,8 +334,16 @@ class WaController extends Controller
                 }
             }
         } else {
-            // Nessun ordine o prenotazione trovato per il Message ID
-            Log::info("(WC) Nessun ordine o prenotazione trovati per il Message ID: " . $messageId);
+            // Il pulsante è stato premuto e capito, ma nel database del
+            // ristorante non c'è nulla che porti questo whatsapp_message_id:
+            // il flusso muore qui e il cliente non riceve niente. Prima era
+            // una riga info che si perdeva nel rumore.
+            $this->abortReply('Pulsante premuto ma nel database del ristorante non risulta né ordine né prenotazione', [
+                'wa_id' => $messageId,
+                'response' => $button_r,
+                'source_id' => $source->id ?? null,
+                'db' => $source->db_name ?? null,
+            ], $source);
         }
         return;
     }
