@@ -649,6 +649,11 @@ class WaController extends Controller
                 'mail.mailers.smtp.from.name'    => $source->app_name,
             ]);
 
+            // Laravel tiene in cache il mailer già risolto: senza svuotarlo, la
+            // configurazione appena impostata viene ignorata e la mail parte
+            // con le credenziali di chi l'ha risolto per primo — o non parte.
+            Mail::purge('smtp');
+
             Mail::mailer('smtp')
                 ->to($order->email)
                 ->locale($lang)
@@ -910,6 +915,11 @@ class WaController extends Controller
                 'mail.mailers.smtp.from.address' => $source->username,
                 'mail.mailers.smtp.from.name'    => $source->app_name,
             ]);
+
+            // Laravel tiene in cache il mailer già risolto: senza svuotarlo, la
+            // configurazione appena impostata viene ignorata e la mail parte
+            // con le credenziali di chi l'ha risolto per primo — o non parte.
+            Mail::purge('smtp');
 
             Mail::mailer('smtp')
                 ->to($res->email)
