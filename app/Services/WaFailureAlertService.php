@@ -93,6 +93,7 @@ class WaFailureAlertService
             'wa_order'       => 'WA Ordine',
             'wa_reservation' => 'WA Prenotazione',
             'wa_delivery'    => 'WA Consegna fallita',
+            'wa_reply'       => 'WA Risposta non lavorata',
             default          => ucfirst(str_replace('_', ' ', $flow)),
         };
     }

@@ -75,54 +75,45 @@ class WaController extends Controller
 
         $messageId = data_get($incomingMessage, 'context.id');
         if (!$messageId) {
-            Log::warning("(WC) Risposta WhatsApp senza context.id", [
+            return $this->abortReply('Risposta WhatsApp senza context.id', [
                 'incoming_type' => $incomingMessage['type'] ?? null,
                 'message' => $incomingMessage,
             ]);
-
-            return response('EVENT_RECEIVED', 200);
         }
 
         $storedMessage = Message::where('wa_id', $messageId)->first();
         if (!$storedMessage) {
-            Log::warning("(WC) Nessun Message trovato per il context.id ricevuto", [
+            return $this->abortReply('Nessun messaggio nostro corrisponde alla risposta ricevuta', [
                 'wa_id' => $messageId,
+                'message' => $incomingMessage,
             ]);
-
-            return response('EVENT_RECEIVED', 200);
         }
 
         $source = Source::find($storedMessage->source);
         if (!$source) {
-            Log::warning("(WC) Nessuna Source trovata per il messaggio ricevuto", [
+            return $this->abortReply('Ristorante non trovato per il messaggio ricevuto', [
                 'wa_id' => $messageId,
                 'source_id' => $storedMessage->source,
             ]);
-
-            return response('EVENT_RECEIVED', 200);
         }
 
         $reply = $this->extractWhatsappReplyAction($incomingMessage, $storedMessage);
         if (!$reply) {
-            Log::warning("(WC) Impossibile determinare il pulsante premuto", [
+            return $this->abortReply('Impossibile capire quale pulsante è stato premuto', [
                 'wa_id' => $messageId,
                 'stored_type' => $storedMessage->type,
                 'incoming_type' => $incomingMessage['type'] ?? null,
                 'message' => $incomingMessage,
-            ]);
-
-            return response('EVENT_RECEIVED', 200);
+            ], $source);
         }
 
         $responseValue = $this->mapWhatsappReplyToResponse($reply['action']);
         if ($responseValue === null) {
-            Log::warning("(WC) Azione WhatsApp non riconosciuta, nessun aggiornamento eseguito", [
+            return $this->abortReply('Pulsante premuto non riconosciuto: nessun aggiornamento eseguito', [
                 'wa_id' => $messageId,
                 'action' => $reply['action'],
                 'reply_type' => $reply['type'],
-            ]);
-
-            return response('EVENT_RECEIVED', 200);
+            ], $source);
         }
 
         Log::info("(WC) Pulsante premuto", [
@@ -936,6 +927,35 @@ class WaController extends Controller
         }
 
         return;
+    }
+
+    /**
+     * Vicolo cieco nella lavorazione di una risposta WhatsApp.
+     *
+     * Sono i punti in cui il pulsante premuto dal ristoratore non arriva a
+     * cambiare la prenotazione: da qui in poi il cliente non riceve nessuna
+     * mail. Prima uscivano con una riga di log che non leggeva nessuno, ora
+     * mandano un avviso a info@future-plus.it dicendo dove si sono fermati.
+     */
+    protected function abortReply(string $reason, array $context = [], $source = null)
+    {
+        Log::warning('(WC) ' . $reason . ': ' . $this->encodePayload($context));
+
+        $waId = $context['wa_id'] ?? null;
+        $alertKey = 'wa_reply_alert:' . ($waId ?: md5($reason . $this->encodePayload($context)));
+
+        // WhatsApp ripete i webhook: un avviso per risposta, non uno per tentativo.
+        if (Cache::add($alertKey, 1, now()->addHours(6))) {
+            app(WaFailureAlertService::class)->notify('wa_reply', [
+                'wa_id' => $waId,
+                'source' => $source,
+                'error_type' => 'whatsapp_reply_unprocessed',
+                'message' => $reason,
+                'resource' => $context,
+            ]);
+        }
+
+        return response('EVENT_RECEIVED', 200);
     }
 
     /**
