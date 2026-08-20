@@ -639,25 +639,12 @@ class WaController extends Controller
                 'total_price' => $order->tot_price,
             ];
 
-            config()->set([
-                'mail.mailers.smtp.host'         => $source->host,
-                'mail.mailers.smtp.port'         => 465,
-                'mail.mailers.smtp.username'     => $source->username,
-                'mail.mailers.smtp.password'     => $source->token,
-                'mail.mailers.smtp.encryption'   => 'ssl',
-                'mail.mailers.smtp.from.address' => $source->username,
-                'mail.mailers.smtp.from.name'    => $source->app_name,
-            ]);
-
-            // Laravel tiene in cache il mailer già risolto: senza svuotarlo, la
-            // configurazione appena impostata viene ignorata e la mail parte
-            // con le credenziali di chi l'ha risolto per primo — o non parte.
-            Mail::purge('smtp');
-
-            Mail::mailer('smtp')
-                ->to($order->email)
-                ->locale($lang)
-                ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
+            $this->sendCustomerMail($bodymail, $source, $lang, $order->email, 'wa_order', [
+                'order_id'  => $order->id ?? null,
+                'status'    => $order->status ?? null,
+                'response'  => $c_a,
+                'modifiers' => $this->orderModifierLogContext($order),
+            ], $order);
 
         } catch (\Throwable $e) {
             Log::error('(WC) Errore in statusOrder', [
@@ -691,6 +678,156 @@ class WaController extends Controller
         }
 
         return $m;
+    }
+
+    /**
+     * Manda al cliente la mail di conferma o annullamento.
+     *
+     * È l'unica comunicazione che il cliente riceve dopo che il ristoratore ha
+     * premuto il pulsante su WhatsApp: lo stato a quel punto è già cambiato sul
+     * database, quindi un invio perso lascia la persona senza risposta e senza
+     * che nessuno se ne accorga. Qui dentro si controlla che ci siano davvero
+     * destinatario e credenziali, si ritenta una volta sugli errori di rete, e
+     * in ogni caso di resa si avvisa info@future-plus.it.
+     */
+    protected function sendCustomerMail(
+        array $bodymail,
+        $source,
+        string $lang,
+        $recipient,
+        string $flow,
+        array $resource,
+        $order = null,
+        $reservation = null
+    ): void {
+        $recipient = is_string($recipient) ? trim($recipient) : '';
+
+        $alert = function (string $reason, ?\Throwable $e = null) use ($flow, $source, $resource, $order, $reservation, $lang, $recipient) {
+            app(WaFailureAlertService::class)->notify($flow, [
+                'wa_id'       => $order?->whatsapp_message_id ?? $reservation?->whatsapp_message_id,
+                'lang'        => $lang,
+                'source'      => $source,
+                'order'       => $order,
+                'reservation' => $reservation,
+                'message'     => $reason,
+                'error_type'  => 'customer_mail_not_sent',
+                'resource'    => $resource + [
+                    'recipient'    => $recipient !== '' ? $recipient : null,
+                    'reason'       => $reason,
+                    'mail_host'    => $source->host ?? null,
+                    'mail_account' => $source->username ?? null,
+                ],
+            ], $e);
+        };
+
+        if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+            Log::error('(WC) Mail al cliente non inviata: destinatario mancante o non valido', [
+                'flow' => $flow,
+                'recipient' => $recipient,
+                'resource' => $resource,
+            ]);
+            $alert('Indirizzo del cliente mancante o non valido: la mail non è partita');
+
+            return;
+        }
+
+        // Senza uno di questi tre valori il mailer nasce monco: prima si
+        // arrivava fino a Symfony, che rispondeva con un TypeError su host
+        // null e nessuno capiva più di cosa si trattasse.
+        $missing = collect(['host' => $source->host ?? null, 'username' => $source->username ?? null, 'token' => $source->token ?? null])
+            ->filter(fn ($value) => $value === null || trim((string) $value) === '')
+            ->keys()
+            ->all();
+
+        if ($missing !== []) {
+            Log::error('(WC) Mail al cliente non inviata: credenziali SMTP del ristorante incomplete', [
+                'flow' => $flow,
+                'missing' => $missing,
+                'source_id' => $source->id ?? null,
+            ]);
+            $alert('Credenziali SMTP del ristorante incomplete (' . implode(', ', $missing) . ')');
+
+            return;
+        }
+
+        // Si configura il mailer 'tenant', non 'smtp': il mailer di sistema
+        // resta pulito e l'avviso di errore può partire anche quando la casella
+        // del ristorante è quella che non funziona.
+        config()->set([
+            'mail.mailers.tenant.transport'    => 'smtp',
+            'mail.mailers.tenant.host'         => $source->host,
+            'mail.mailers.tenant.port'         => 465,
+            'mail.mailers.tenant.username'     => $source->username,
+            'mail.mailers.tenant.password'     => $source->token,
+            'mail.mailers.tenant.encryption'   => 'ssl',
+            'mail.mailers.tenant.from.address' => $source->username,
+            'mail.mailers.tenant.from.name'    => $source->app_name,
+        ]);
+
+        $this->purgeTenantMailer();
+
+        $attempts = 2;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                Mail::mailer('tenant')
+                    ->to($recipient)
+                    ->locale($lang)
+                    ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
+
+                Log::info("(WC) Mail al cliente inviata a {$recipient} da {$source->username}", [
+                    'flow' => $flow,
+                    'attempt' => $attempt,
+                    'resource' => $resource,
+                ]);
+
+                return;
+            } catch (\Throwable $e) {
+                // Un template che esplode esplode uguale al secondo giro: si
+                // ritenta solo su quello che può essere andato storto sulla rete.
+                $retryable = !($e instanceof \Illuminate\View\ViewException) && !($e instanceof \ErrorException);
+                $last = $attempt === $attempts || !$retryable;
+
+                Log::error('(WC) Invio mail al cliente fallito', [
+                    'flow' => $flow,
+                    'attempt' => $attempt,
+                    'retry' => !$last,
+                    'recipient' => $recipient,
+                    'mail_host' => $source->host ?? null,
+                    'mail_account' => $source->username ?? null,
+                    'resource' => $resource,
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => collect($e->getTrace())->take(5)->all(),
+                ]);
+
+                if ($last) {
+                    $alert('Invio della mail al cliente fallito: ' . $e->getMessage(), $e);
+
+                    return;
+                }
+
+                $this->purgeTenantMailer();
+                usleep(500000);
+            }
+        }
+    }
+
+    /**
+     * Laravel tiene in cache il mailer già risolto: senza svuotarlo la
+     * configurazione appena impostata viene ignorata e la mail parte con le
+     * credenziali di chi l'ha risolto per primo — o non parte. Se il manager
+     * non sa svuotare (succede con Mail::fake) si tira dritto: è una pulizia,
+     * non una condizione per spedire.
+     */
+    private function purgeTenantMailer(): void
+    {
+        try {
+            Mail::purge('tenant');
+        } catch (\Throwable $e) {
+            Log::debug('(WC) Mailer del ristorante non svuotato: ' . $e->getMessage());
+        }
     }
 
     private function decodeDynamicModifierJsonArray(mixed $value, string $modifierType, $order = null, $product = null): array
@@ -906,27 +1043,11 @@ class WaController extends Controller
         ];
 
         try {
-            config()->set([
-                'mail.mailers.smtp.host'         => $source->host,
-                'mail.mailers.smtp.port'         => 465,
-                'mail.mailers.smtp.username'     => $source->username,
-                'mail.mailers.smtp.password'     => $source->token,
-                'mail.mailers.smtp.encryption'   => 'ssl',
-                'mail.mailers.smtp.from.address' => $source->username,
-                'mail.mailers.smtp.from.name'    => $source->app_name,
-            ]);
-
-            // Laravel tiene in cache il mailer già risolto: senza svuotarlo, la
-            // configurazione appena impostata viene ignorata e la mail parte
-            // con le credenziali di chi l'ha risolto per primo — o non parte.
-            Mail::purge('smtp');
-
-            Mail::mailer('smtp')
-                ->to($res->email)
-                ->locale($lang)
-                ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
-
-            Log::info("Email inviata correttamente a {$res->email} da {$source->username}");
+            $this->sendCustomerMail($bodymail, $source, $lang, $res->email, 'wa_reservation', [
+                'res_id'   => $res->id ?? null,
+                'status'   => $res->status ?? null,
+                'response' => $c_a,
+            ], null, $res);
         } catch (\Throwable $e) {
             Log::error('(WC) Errore in statusRes', [
                 'res_id' => $res->id ?? null,

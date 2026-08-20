@@ -43,27 +43,16 @@ class WaFailureAlertService
         ];
 
         try {
-            // Ripristina il config SMTP ai valori A1MS (in caso sia stato sovrascritto dal ristorante)
-            config()->set('mail.mailers.smtp', [
-                'transport'  => 'smtp',
-                'host'       => env('MAIL_HOST'),
-                'port'       => (int) env('MAIL_PORT', 465),
-                'encryption' => env('MAIL_ENCRYPTION', 'ssl'),
-                'username'   => env('MAIL_USERNAME'),
-                'password'   => env('MAIL_PASSWORD'),
-                'timeout'    => null,
-            ]);
-            // Svuota il mailer SMTP cachato per forzare la riconnessione con le
-            // credenziali A1MS. Se non è possibile non si rinuncia all'avviso:
-            // è l'ultima cosa che ci avvisa che qualcosa non va.
-            try {
-                Mail::purge('smtp');
-            } catch (Throwable $purgeException) {
-                Log::warning('(WaFailureAlertService) Impossibile svuotare il mailer: '
-                    . $purgeException->getMessage());
-            }
-
-            Mail::mailer('smtp')
+            // L'avviso parte dal mailer 'alert', che nessuno riconfigura a
+            // runtime: le credenziali del ristorante finiscono su 'tenant'.
+            //
+            // Prima qui si riscriveva 'mail.mailers.smtp' leggendo env(): in
+            // produzione la config e' in cache, env() a runtime restituisce
+            // null e il mailer nasceva senza host. Il risultato era un
+            // TypeError su Dsn::__construct() catturato due righe piu' sotto:
+            // l'avviso non e' mai partito, e il fallimento originale restava
+            // solo nel log che non legge nessuno.
+            Mail::mailer($this->alertMailer())
                 ->to(self::RECIPIENT)
                 ->send(new WaFailureAlertMail($alert));
         } catch (Throwable $mailException) {
@@ -85,6 +74,16 @@ class WaFailureAlertService
                 'mail_line'      => $mailException->getLine(),
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR));
         }
+    }
+
+    /**
+     * Il mailer 'alert' vive in config/mail.php. Se la config in cache sul
+     * server è più vecchia del deploy quel mailer non c'è ancora: meglio
+     * mandare l'avviso con il mailer di default che non mandarlo affatto.
+     */
+    private function alertMailer(): ?string
+    {
+        return config('mail.mailers.alert') ? 'alert' : null;
     }
 
     private function flowLabel(string $flow): string

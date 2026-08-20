@@ -15,15 +15,22 @@
         default => 'it',
     };
 
-    $dateSlot = $content_mail['date_slot'];
-    if (strpos($dateSlot, ' ') !== false) {
-        $formattedDate = Carbon::createFromFormat('d/m/Y H:i', $dateSlot)
-            ->locale($carbonLocale)
-            ->translatedFormat('l j F \a\l\l\e H:i');
-    } else {
-        $formattedDate = Carbon::createFromFormat('d/m/Y', $dateSlot)
-            ->locale($carbonLocale)
-            ->translatedFormat('l j F');
+    $dateSlot = (string) ($content_mail['date_slot'] ?? '');
+    // Una data scritta in un formato che Carbon non riconosce faceva fallire
+    // tutta la mail: meglio mostrarla come sta scritta che non mandarla.
+    try {
+        if (strpos($dateSlot, ' ') !== false) {
+            $formattedDate = Carbon::createFromFormat('d/m/Y H:i', $dateSlot)
+                ->locale($carbonLocale)
+                ->translatedFormat('l j F \a\l\l\e H:i');
+        } else {
+            $formattedDate = Carbon::createFromFormat('d/m/Y', $dateSlot)
+                ->locale($carbonLocale)
+                ->translatedFormat('l j F');
+        }
+    } catch (\Throwable $dateException) {
+        Log::warning('(mail) Data della prenotazione in un formato non previsto: ' . $dateSlot);
+        $formattedDate = $dateSlot;
     }
 
     $status = $content_mail['status'] ?? 2;
@@ -552,7 +559,18 @@
                                 <tr>
                                     <td style="padding:18px 20px;">
 
-                                        @if ($content_mail['property_adv']['dt'] && $content_mail['sala'] !== 0)
+                                        @php
+                                            // Le impostazioni del ristorante arrivano da un JSON che non
+                                            // sempre contiene tutte le chiavi: una chiave mancante faceva
+                                            // fallire la mail, e il cliente restava senza risposta.
+                                            $propertyAdv = $content_mail['property_adv'] ?? [];
+                                            $doubleRoom  = $propertyAdv['dt'] ?? false;
+                                            $roomName    = $content_mail['sala'] == 1
+                                                ? ($propertyAdv['sala_1'] ?? '')
+                                                : ($propertyAdv['sala_2'] ?? '');
+                                        @endphp
+
+                                        @if ($doubleRoom && $content_mail['sala'] !== 0 && $roomName !== '')
                                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
                                                style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid #e5e7eb;">
                                             <tr>
@@ -562,9 +580,7 @@
                                                         {{ __('admin.Sala_prenota') }}
                                                     </p>
                                                     <p style="color:#0f0b2e; font-size:16px; font-weight:700; margin:0;">
-                                                        {{ $content_mail['sala'] == 1
-                                                            ? $content_mail['property_adv']['sala_1']
-                                                            : $content_mail['property_adv']['sala_2'] }}
+                                                        {{ $roomName }}
                                                     </p>
                                                 </td>
                                             </tr>
