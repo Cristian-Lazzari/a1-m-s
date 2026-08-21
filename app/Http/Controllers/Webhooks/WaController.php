@@ -252,19 +252,7 @@ class WaController extends Controller
     protected function handle_p2($data, $source)
     {   
 
-        Config::set("database.connections.dynamic", [
-            'driver'    => 'mysql',
-            'host'      => '127.0.0.1',
-            'port'      => '3306',
-            'database'  => $source->db_name,
-            'username'  => 'dciludls_ceo',
-            'password'  => 'sepT2921!',
-            'charset'   => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
-        ]);
-        // resettiamo la connessione per far usare i nuovi parametri
-        DB::purge('dynamic');
-        DB::reconnect('dynamic');
+        $this->connectToTenant($source);
 
         // Lingua impostata nel pannello del ristorante (usata per WA co-worker)
         $langSetting = Setting::on('dynamic')->where('name', 'lang')->first();
@@ -279,19 +267,34 @@ class WaController extends Controller
         $setting = Setting::on('dynamic')->where('name', 'wa')->first();
 
         $property = json_decode($setting->property, true);
-        $numbers = $property['numbers'];
+        $numbers = is_array($property['numbers'] ?? null) ? array_values($property['numbers']) : [];
         $co_work = false;
-        if(count($numbers) == 2){
+        $number_correct = null;
+        $p = null;
+
+        // Il numero che arriva da WhatsApp è in formato internazionale e senza
+        // segni: confrontarlo tale e quale con quello scritto a mano nelle
+        // impostazioni faceva fallire array_search, e quel false valeva come
+        // indice 0. Risultato: rispondeva il secondo numero e il sistema
+        // segnava come "attivo" il primo, che poi si vedeva rifiutare il
+        // messaggio libero con l'errore 131047.
+        $responderIndex = $this->matchWhatsappNumberIndex($number, $numbers);
+
+        if ($responderIndex === null) {
+            Log::warning('(WC) Il numero che ha risposto non è fra quelli configurati', [
+                'number' => $number,
+                'numbers' => $numbers,
+            ]);
+        } else {
+            // La finestra di 24 ore si apre solo per chi ha davvero risposto.
+            $this->updateLastResponseWa($responderIndex);
+        }
+
+        if (count($numbers) === 2 && $responderIndex !== null) {
             $co_work = true;
-            $p = array_search($number, $numbers);
-            $this->updateLastResponseWa($p);
-            Log::info("Co1 ==> {$p}");
-            $p = $p == 0 ? 1 : 0;
-            Log::info("Co2 ==> {$p}");
+            $p = $responderIndex === 0 ? 1 : 0;
             $number_correct = $numbers[$p];
-        }else{
-            Log::info("single ==> lol");
-            $this->updateLastResponseWa(0);
+            Log::info("(WC) Risposta da {$responderIndex}, avviso il collega {$p}");
         }
 
         $messageId = $data['wa_id'];
@@ -315,7 +318,7 @@ class WaController extends Controller
                 return;
             }
             if ($co_work) {
-                $this->message_co_worker(1, $button_r, $p, $order, $number_correct, $adminLang);
+                $this->message_co_worker(1, $button_r, $p, $order, $number_correct, $adminLang, $source);
             }
         } else
         if ($reservation) {
@@ -330,7 +333,7 @@ class WaController extends Controller
                     return;
                 }
                 if ($co_work) {
-                    $this->message_co_worker(false, $button_r, $p, $reservation, $number_correct, $adminLang);
+                    $this->message_co_worker(false, $button_r, $p, $reservation, $number_correct, $adminLang, $source);
                 }
             }
         } else {
@@ -348,7 +351,7 @@ class WaController extends Controller
         return;
     }
 
-    protected function message_co_worker($o_r, $c_a, $p, $or_res, $number, $adminLang = 'it'){
+    protected function message_co_worker($o_r, $c_a, $p, $or_res, $number, $adminLang = 'it', $source = null){
         try {
 
             // Imposta locale per le traduzioni dei messaggi al co-worker admin
@@ -378,7 +381,10 @@ class WaController extends Controller
             $colleague = __('admin.wa.colleague');
 
             $messages = json_decode($or_res->whatsapp_message_id, true);
-            $old_id = $messages[$p];
+            // Se la notifica a questo numero non era partita non c'è nessun
+            // messaggio a cui agganciare la risposta: il context con id nullo
+            // farebbe rifiutare l'invio da WhatsApp.
+            $old_id = is_array($messages) ? ($messages[$p] ?? null) : null;
 
             Log::info("(WC) Esecuzione message_co_worker", [
                 'o_r' => $o_r,
@@ -402,6 +408,10 @@ class WaController extends Controller
                         'body' => $m
                     ]
                 ];
+
+                if (!$old_id) {
+                    unset($data['context']);
+                }
             } else {
                 $type_m_1 = 1;
                 $data = [
@@ -450,6 +460,10 @@ class WaController extends Controller
                         "message_id" => $old_id
                     ],
                 ];
+
+                if (!$old_id) {
+                    unset($data['context']);
+                }
             }
     
             $url = 'https://graph.facebook.com/v24.0/' . config('configurazione.WA_ID') . '/messages';
@@ -494,12 +508,18 @@ class WaController extends Controller
                             ],
                         ],
                     ],
-                    'context' => ['message_id' => $old_id],
                 ];
+
+                if ($old_id) {
+                    $templateData['context'] = ['message_id' => $old_id];
+                }
 
                 $response = Http::withHeaders($headers)->post($url, $templateData);
                 Log::info("(WC) Risposta fallback template co-worker:", ['response' => $response->json()]);
+                $type_m_1 = 1;
             }
+
+            $this->storeSentMessage($response, $source, $type_m_1, $adminLang);
 
             return $response->json();
         } catch (Exception $e) {
@@ -512,6 +532,31 @@ class WaController extends Controller
         }
     }
     
+    /**
+     * Registra il messaggio appena inviato al collega. Senza questa riga, se
+     * WhatsApp poi lo rifiuta, l'avviso di consegna fallita arriva senza nome
+     * del ristorante: è il caso in cui nella mail si legge solo "-".
+     */
+    protected function storeSentMessage($response, $source, $typeFlag, $lang): void
+    {
+        try {
+            $waId = data_get($response->json(), 'messages.0.id');
+
+            if (!$waId || !$source) {
+                return;
+            }
+
+            Message::create([
+                'wa_id'  => $waId,
+                'type'   => $typeFlag,
+                'source' => $source->id,
+                'lang'   => $lang ?: 'it',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('(WC) Messaggio inviato non registrato: ' . $e->getMessage());
+        }
+    }
+
     protected function statusOrder($c_a, $order, $source, $lang = 'it')
     {
         Log::info("(WC) Inizio statusOrder");
@@ -1167,6 +1212,14 @@ class WaController extends Controller
                     . $lookupException->getMessage());
             }
 
+            // WhatsApp ha appena detto che con questo numero la finestra di 24
+            // ore è chiusa: il timestamp che ci aveva fatto scegliere il
+            // messaggio libero è sbagliato e va buttato, altrimenti ogni
+            // notifica successiva rifà lo stesso errore fino a scadenza.
+            if ($source && $this->isOutsideServiceWindowError($errors)) {
+                $this->reopenTemplateModeFor($source, $recipient);
+            }
+
             app(WaFailureAlertService::class)->notify('wa_delivery', [
                 'wa_id' => $waId,
                 'lang' => $storedMessage->lang ?? 'it',
@@ -1211,46 +1264,188 @@ class WaController extends Controller
         return implode(' | ', array_filter($parts)) ?: 'Errore non specificato da WhatsApp.';
     }
 
-    protected function isLastResponseWaWithin24Hours($p)
+    /**
+     * La finestra di servizio si misura da quando il ristoratore ha risposto.
+     * Il margine è di 23 ore e non di 24: fra il momento in cui salviamo il
+     * timestamp e quello in cui WhatsApp fa i suoi conti c'è sempre uno
+     * scarto, e sul filo di lana è lui a vincere con l'errore 131047.
+     */
+    protected function isLastResponseWaWithin24Hours($p): bool
     {
         $setting = Setting::on('dynamic')->where('name', 'wa')->first();
-        if ($setting) {
-            // Decodifica il campo 'property' da JSON ad array
-            $property = json_decode($setting->property, true);
-            if($p == 0){
-                 // Controlla se 'last_response_wa' è impostato
-                if (isset($property['last_response_wa_1']) && !empty($property['last_response_wa_1'])) {
-                    // Confronta la data salvata con le ultime 24 ore
-                    $lastResponseDate = Carbon::parse($property['last_response_wa_1']);
-                    return $lastResponseDate->greaterThanOrEqualTo(Carbon::now()->subHours(24));
-                }
-            }else{
-                 // Controlla se 'last_response_wa' è impostato
-                if (isset($property['last_response_wa_2']) && !empty($property['last_response_wa_2'])) {
-                    // Confronta la data salvata con le ultime 24 ore
-                    $lastResponseDate = Carbon::parse($property['last_response_wa_2']);
-                    return $lastResponseDate->greaterThanOrEqualTo(Carbon::now()->subHours(24));
-                }
+
+        if (!$setting) {
+            return false;
+        }
+
+        $property = json_decode($setting->property, true);
+
+        if (!is_array($property)) {
+            return false;
+        }
+
+        $lastResponse = $property[$this->lastResponseKey($p)] ?? null;
+
+        if (empty($lastResponse)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($lastResponse)->greaterThanOrEqualTo(Carbon::now()->subHours(23));
+        } catch (\Throwable $e) {
+            Log::warning('(WC) Data ultima risposta illeggibile: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    protected function lastResponseKey($p): string
+    {
+        return ((int) $p === 0) ? 'last_response_wa_1' : 'last_response_wa_2';
+    }
+
+    /** Apre la connessione al database del singolo ristorante. */
+    protected function connectToTenant($source): void
+    {
+        Config::set("database.connections.dynamic", [
+            'driver'    => 'mysql',
+            'host'      => '127.0.0.1',
+            'port'      => '3306',
+            'database'  => $source->db_name,
+            'username'  => 'dciludls_ceo',
+            'password'  => 'sepT2921!',
+            'charset'   => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+        ]);
+        // resettiamo la connessione per far usare i nuovi parametri
+        DB::purge('dynamic');
+        DB::reconnect('dynamic');
+    }
+
+    /**
+     * Confronta i numeri per sole cifre: nelle impostazioni possono essere
+     * scritti con +, spazi o prefisso omesso, e resterebbero diversi da quello
+     * che manda WhatsApp pur essendo lo stesso telefono.
+     */
+    protected function matchWhatsappNumberIndex($number, array $numbers): ?int
+    {
+        $needle = preg_replace('/\D+/', '', (string) $number);
+
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($numbers as $index => $candidate) {
+            $haystack = preg_replace('/\D+/', '', (string) $candidate);
+
+            if ($haystack === '') {
+                continue;
             }
-        }else{
-            return false; // Se il record non esiste o la data non è impostata
+
+            if ($haystack === $needle) {
+                return (int) $index;
+            }
+
+            // Uno dei due può essere senza prefisso internazionale. Sotto le
+            // otto cifre il confronto per coda non distingue più niente.
+            $shortest = min(strlen($haystack), strlen($needle));
+
+            if ($shortest >= 8 && (str_ends_with($needle, $haystack) || str_ends_with($haystack, $needle))) {
+                return (int) $index;
+            }
+        }
+
+        return null;
+    }
+
+    /** Gli errori con cui WhatsApp dice che serve un template, non un testo libero. */
+    protected function isOutsideServiceWindowError($errors): bool
+    {
+        if (!is_array($errors)) {
+            return false;
+        }
+
+        foreach ($errors as $error) {
+            if (in_array((int) data_get($error, 'code'), [131047, 131026, 470], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Cancella il timestamp dell'ultima risposta del destinatario: al prossimo
+     * invio il sistema sceglierà il template, che fuori finestra passa sempre.
+     */
+    protected function reopenTemplateModeFor($source, $recipient): void
+    {
+        try {
+            $this->connectToTenant($source);
+
+            $setting = Setting::on('dynamic')->where('name', 'wa')->first();
+
+            if (!$setting) {
+                return;
+            }
+
+            $property = json_decode($setting->property, true);
+
+            if (!is_array($property)) {
+                return;
+            }
+
+            $numbers = is_array($property['numbers'] ?? null) ? array_values($property['numbers']) : [];
+            $index = $this->matchWhatsappNumberIndex($recipient, $numbers);
+
+            if ($index === null) {
+                return;
+            }
+
+            $key = $this->lastResponseKey($index);
+
+            if (empty($property[$key])) {
+                return;
+            }
+
+            $property[$key] = null;
+            $setting->property = json_encode($property);
+            $setting->save();
+
+            Log::info('(WC) Finestra 24h azzerata dopo il rifiuto di WhatsApp', [
+                'recipient' => $recipient,
+                'key' => $key,
+                'db' => $source->db_name ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('(WC) Non riesco ad azzerare la finestra 24h: ' . $e->getMessage());
         }
     }
     protected function updateLastResponseWa($c)
     {
         $setting = Setting::on('dynamic')->where('name', 'wa')->first();
-        $property = json_decode($setting->property, true);
-        $now = Carbon::now();
-        Log::info("update-Last-Response-Wa ==> {$c}");
-        if($c == 0){
-            $property['last_response_wa_1'] = $now;
-        }else {
-            $property['last_response_wa_2'] = $now;
 
+        if (!$setting) {
+            Log::warning('(WC) Impostazione wa assente: finestra 24h non aggiornata');
+
+            return;
         }
-        $setting->property= json_encode($property);
-        $setting->update();
-        
+
+        $property = json_decode($setting->property, true);
+
+        if (!is_array($property)) {
+            $property = [];
+        }
+
+        // toDateTimeString e non l'oggetto Carbon: è il formato che scrive il
+        // backoffice, e nel JSON resta leggibile invece di diventare una data
+        // ISO in UTC che sembra sfasata di due ore a chi apre le impostazioni.
+        $property[$this->lastResponseKey($c)] = Carbon::now()->toDateTimeString();
+
+        Log::info("update-Last-Response-Wa ==> {$c}");
+
+        $setting->property = json_encode($property);
+        $setting->save();
     }
 
 }

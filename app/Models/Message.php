@@ -12,6 +12,7 @@ class Message extends Model
         'wa_id',
         'source',
         'response',
+        'type',
         'lang',
     ];
 }
