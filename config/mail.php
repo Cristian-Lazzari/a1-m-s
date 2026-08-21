@@ -63,11 +63,27 @@ return [
         ],
 
         /*
-        | Mailer delle mail ai clienti del ristorante: viene riconfigurato a
-        | ogni webhook con le credenziali del tenant. I valori qui sotto sono
-        | solo un punto di partenza, WaController li sovrascrive sempre.
+        | Mailer delle mail ai clienti del ristorante.
+        |
+        | È un failover: prima la casella del ristorante (riconfigurata a ogni
+        | webhook da WaController), poi sendmail. Se le credenziali del tenant
+        | vengono rifiutate, la conferma al cliente parte lo stesso dal server
+        | invece di sparire — che è il caso peggiore, perché a quel punto lo
+        | stato è già cambiato e la persona resta senza risposta.
         */
         'tenant' => [
+            'transport' => 'failover',
+            'mailers' => [
+                'tenant_smtp',
+                'sendmail',
+            ],
+        ],
+
+        /*
+        | I valori qui sotto sono solo un punto di partenza: WaController li
+        | sovrascrive sempre con host, casella e password del ristorante.
+        */
+        'tenant_smtp' => [
             'transport' => 'smtp',
             'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
             'port' => env('MAIL_PORT', 587),

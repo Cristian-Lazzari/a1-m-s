@@ -776,37 +776,50 @@ class WaController extends Controller
             return;
         }
 
-        // Senza uno di questi tre valori il mailer nasce monco: prima si
-        // arrivava fino a Symfony, che rispondeva con un TypeError su host
-        // null e nessuno capiva più di cosa si trattasse.
-        $missing = collect(['host' => $source->host ?? null, 'username' => $source->username ?? null, 'token' => $source->token ?? null])
-            ->filter(fn ($value) => $value === null || trim((string) $value) === '')
-            ->keys()
-            ->all();
-
-        if ($missing !== []) {
-            Log::error('(WC) Mail al cliente non inviata: credenziali SMTP del ristorante incomplete', [
+        // Senza mittente non si spedisce da nessun canale: il Mailable lo usa
+        // come from e Symfony rifiuterebbe la mail comunque.
+        if (trim((string) ($source->username ?? '')) === '') {
+            Log::error('(WC) Mail al cliente non inviata: manca la casella mittente del ristorante', [
                 'flow' => $flow,
-                'missing' => $missing,
                 'source_id' => $source->id ?? null,
             ]);
-            $alert('Credenziali SMTP del ristorante incomplete (' . implode(', ', $missing) . ')');
+            $alert('Casella mittente del ristorante non configurata');
 
             return;
         }
 
-        // Si configura il mailer 'tenant', non 'smtp': il mailer di sistema
-        // resta pulito e l'avviso di errore può partire anche quando la casella
-        // del ristorante è quella che non funziona.
+        // Host o password mancanti: il transport smtp nascerebbe monco e
+        // fallirebbe con un TypeError, che il failover non intercetta. In quel
+        // caso si va dritti a sendmail, che almeno consegna.
+        $incompleteSmtp = collect(['host' => $source->host ?? null, 'token' => $source->token ?? null])
+            ->filter(fn ($value) => $value === null || trim((string) $value) === '')
+            ->keys()
+            ->all();
+
+        $mailerName = 'tenant';
+
+        if ($incompleteSmtp !== []) {
+            $mailerName = 'sendmail';
+            Log::warning('(WC) Credenziali SMTP del ristorante incomplete, spedisco con sendmail', [
+                'flow' => $flow,
+                'missing' => $incompleteSmtp,
+                'source_id' => $source->id ?? null,
+            ]);
+        }
+
+        // Si configura 'tenant_smtp', non 'smtp': il mailer di sistema resta
+        // pulito e l'avviso di errore può partire anche quando la casella del
+        // ristorante è quella che non funziona. Chi spedisce è 'tenant', il
+        // failover che dopo questa casella prova sendmail.
         config()->set([
-            'mail.mailers.tenant.transport'    => 'smtp',
-            'mail.mailers.tenant.host'         => $source->host,
-            'mail.mailers.tenant.port'         => 465,
-            'mail.mailers.tenant.username'     => $source->username,
-            'mail.mailers.tenant.password'     => $source->token,
-            'mail.mailers.tenant.encryption'   => 'ssl',
-            'mail.mailers.tenant.from.address' => $source->username,
-            'mail.mailers.tenant.from.name'    => $source->app_name,
+            'mail.mailers.tenant_smtp.transport'    => 'smtp',
+            'mail.mailers.tenant_smtp.host'         => $source->host,
+            'mail.mailers.tenant_smtp.port'         => 465,
+            'mail.mailers.tenant_smtp.username'     => $source->username,
+            'mail.mailers.tenant_smtp.password'     => $source->token,
+            'mail.mailers.tenant_smtp.encryption'   => 'ssl',
+            'mail.mailers.tenant_smtp.from.address' => $source->username,
+            'mail.mailers.tenant_smtp.from.name'    => $source->app_name,
         ]);
 
         $this->purgeTenantMailer();
@@ -815,7 +828,7 @@ class WaController extends Controller
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
-                Mail::mailer('tenant')
+                Mail::mailer($mailerName)
                     ->to($recipient)
                     ->locale($lang)
                     ->send(new confermaOrdineAdmin($bodymail, $source->username, $source->app_name, $lang));
@@ -870,6 +883,7 @@ class WaController extends Controller
     {
         try {
             Mail::purge('tenant');
+            Mail::purge('tenant_smtp');
         } catch (\Throwable $e) {
             Log::debug('(WC) Mailer del ristorante non svuotato: ' . $e->getMessage());
         }
