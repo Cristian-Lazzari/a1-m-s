@@ -14,5 +14,6 @@ class Message extends Model
         'response',
         'type',
         'lang',
+        'ref',
     ];
 }

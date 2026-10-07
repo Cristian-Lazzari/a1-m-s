@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
 use App\Services\WaFailureAlertService;
+use App\Services\Whatsapp\RestaurantWebhookRouter;
+use App\Services\Whatsapp\TenantApi;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -60,6 +62,14 @@ class WaController extends Controller
         // come "Over 9 levels deep, aborting normalization".
         Log::info('Webhook ricevuto: ' . $this->encodePayload($data));
 
+        // Gli eventi dei numeri dei ristoranti (promemoria ai clienti) vanno al
+        // loro gestionale; qui sotto resta solo il numero di piattaforma.
+        $data = app(RestaurantWebhookRouter::class)->dispatch($data);
+
+        if ($data === null) {
+            return response('EVENT_RECEIVED', 200);
+        }
+
         $incomingMessage = data_get($data, 'entry.0.changes.0.value.messages.0');
 
         if (!$incomingMessage) {
@@ -95,6 +105,14 @@ class WaController extends Controller
                 'wa_id' => $messageId,
                 'source_id' => $storedMessage->source,
             ]);
+        }
+
+        // Il ristoratore ha risposto citando l'avviso "un cliente ti ha
+        // scritto": il testo va al cliente dal numero del ristorante.
+        if ($storedMessage->type === 'inbox') {
+            $this->relayToCustomer($storedMessage, $incomingMessage, $source);
+
+            return response('EVENT_RECEIVED', 200);
         }
 
         $reply = $this->extractWhatsappReplyAction($incomingMessage, $storedMessage);
@@ -179,6 +197,89 @@ class WaController extends Controller
             ], $e);
 
             return response('EVENT_RECEIVED', 200);
+        }
+    }
+
+    protected function relayToCustomer(Message $storedMessage, array $incomingMessage, Source $source): void
+    {
+        $from = (string) ($incomingMessage['from'] ?? '');
+        $text = trim((string) data_get($incomingMessage, 'text.body', ''));
+
+        // Il ristoratore ha appena scritto: la sua finestra di 24 ore è aperta,
+        // come quando preme un pulsante.
+        try {
+            $this->connectToTenant($source);
+            $setting = Setting::on('dynamic')->where('name', 'wa')->first();
+            $property = $setting ? json_decode($setting->property, true) : null;
+            $numbers = is_array($property['numbers'] ?? null) ? array_values($property['numbers']) : [];
+            $index = $this->matchWhatsappNumberIndex($from, $numbers);
+
+            if ($index !== null) {
+                $this->updateLastResponseWa($index);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('(WC) Finestra 24h del ristoratore non aggiornata: ' . $e->getMessage());
+        }
+
+        if ($text === '') {
+            $this->sendPlatformText($from, '⚠️ Si possono inoltrare al cliente solo messaggi di testo.', $incomingMessage['id'] ?? null);
+
+            return;
+        }
+
+        try {
+            $response = app(TenantApi::class)->post($source, 'relay', [
+                'ref' => $storedMessage->ref,
+                'text' => $text,
+            ]);
+            $error = $response->successful() ? null : (data_get($response->json(), 'error') ?: 'HTTP ' . $response->status());
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if ($error === null) {
+            $ack = '✅ Inviato al cliente dal numero del locale.';
+        } elseif ($error === 'window_closed') {
+            $ack = '⚠️ Non inviato: il cliente ha scritto più di 24 ore fa e WhatsApp non permette di rispondergli. Meglio chiamarlo.';
+        } else {
+            $ack = '⚠️ Non inviato al cliente. Rispondigli dalla dashboard, sezione WhatsApp.';
+
+            Log::error('(WC) Risposta del ristoratore non inoltrata al cliente', [
+                'ref' => $storedMessage->ref,
+                'source_id' => $source->id,
+                'error' => $error,
+            ]);
+        }
+
+        $this->sendPlatformText($from, $ack, $incomingMessage['id'] ?? null);
+    }
+
+    /** Messaggio libero dal numero di piattaforma, agganciato al messaggio del ristoratore. */
+    protected function sendPlatformText(string $to, string $body, ?string $contextId = null): void
+    {
+        if ($to === '') {
+            return;
+        }
+
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $to,
+            'type' => 'text',
+            'text' => ['body' => $body],
+        ];
+
+        if ($contextId) {
+            $payload['context'] = ['message_id' => $contextId];
+        }
+
+        try {
+            Http::withHeaders([
+                'Authorization' => config('configurazione.WA_TO'),
+                'Content-Type' => 'application/json',
+            ])->post('https://graph.facebook.com/v24.0/' . config('configurazione.WA_ID') . '/messages', $payload);
+        } catch (\Throwable $e) {
+            Log::warning('(WC) Conferma al ristoratore non inviata: ' . $e->getMessage());
         }
     }
 
