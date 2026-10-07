@@ -1,46 +1,24 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\DateController;
-use App\Http\Controllers\Admin\PostController;
-use App\Http\Controllers\Admin\OrderController;
-use App\Http\Controllers\Webhooks\WaController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Webhooks\WhatsappWebhookController;
 use App\Http\Controllers\Whatsapp\OnboardingController;
-use App\Http\Controllers\Admin\MessageController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('guests/home');
 });
 
-Route::middleware(['auth', 'verified'])
-    ->name('admin.')
-    ->prefix('admin')
-    ->group(function () {
-
-        Route::resource('messages',    MessageController::class);
-    });
-
-Route::middleware('auth')
-    ->name('admin.')
-    ->prefix('admin')
-    ->group(function () {
-        Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-    });
-
-
 require __DIR__ . '/auth.php';
 
+Route::get('/admin', DashboardController::class)->middleware('auth')->name('admin.dashboard');
 
-Route::post('/webhook/wa', [WaController::class, 'handle']);
+// Webhook di Meta: accettato solo con firma valida (X-Hub-Signature-256).
+Route::get('/webhook/whatsapp', [WhatsappWebhookController::class, 'verify']);
+Route::post('/webhook/whatsapp', [WhatsappWebhookController::class, 'handle'])->middleware('meta.signature');
 
-// Collegamento del numero WhatsApp di un ristorante (link firmato dal suo gestionale).
+// Collegamento del numero WhatsApp di un ristorante (link monouso dal suo gestionale).
 Route::get('/whatsapp/connect', [OnboardingController::class, 'show'])->name('whatsapp.connect');
 Route::post('/whatsapp/connect/complete', [OnboardingController::class, 'complete'])
-    ->middleware(\Illuminate\Routing\Middleware\ThrottleRequests::class . ':10,1')
+    ->middleware('throttle:10,1')
     ->name('whatsapp.connect.complete');
-Route::get('/webhook/wa', [WaController::class, 'verify']); 
-
-

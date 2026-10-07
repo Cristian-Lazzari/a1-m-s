@@ -12,7 +12,7 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        'webhook/stripe', // Aggiungi qui la rotta del webhook di Stripe
-        'webhook/wa', // Aggiungi qui la rotta del webhook di Stripe
+        // Firmato da Meta (VerifyMetaSignature), non ha sessione né token CSRF.
+        'webhook/whatsapp',
     ];
 }

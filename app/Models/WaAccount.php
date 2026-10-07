@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Numero WhatsApp di un ristorante, collegato con l'Embedded Signup.
+ */
 class WaAccount extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -11,7 +14,7 @@ class WaAccount extends Model
     public const STATUS_ERROR = 'error';
 
     protected $fillable = [
-        'source_id',
+        'tenant_id',
         'waba_id',
         'phone_number_id',
         'business_id',
@@ -30,8 +33,8 @@ class WaAccount extends Model
 
     protected $hidden = ['token', 'pin'];
 
-    public function source()
+    public function tenant()
     {
-        return $this->belongsTo(Source::class);
+        return $this->belongsTo(Tenant::class);
     }
 }

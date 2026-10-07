@@ -10,7 +10,8 @@ class Kernel extends ConsoleKernel
     
     protected function schedule(Schedule $schedule)
     {
-        //$schedule->job(new \App\Jobs\DeletePending)->evertMinute();
+        // Cron cPanel unico:  * * * * * php artisan schedule:run
+        $schedule->command('wa:retry-deliveries')->everyMinute()->withoutOverlapping();
     }
 
    

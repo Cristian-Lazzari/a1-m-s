@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Collega WhatsApp · {{ $source->app_name }}</title>
+    <title>Collega WhatsApp · {{ $tenant->name }}</title>
     <style>
         :root { --bg: #f4f5f2; --card: #ffffff; --ink: #1d2320; --soft: #5d6862; --rule: #dfe3dc; --accent: #1f8a5b; --accent-ink: #ffffff; --warn: #b4441f; }
         @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
 </head>
 <body>
 <main>
-    <h1>Collega il WhatsApp di {{ $source->app_name }}</h1>
+    <h1>Collega il WhatsApp di {{ $tenant->name }}</h1>
     <p class="sub">Da questo numero i clienti riceveranno il promemoria della prenotazione e potranno disdire con un tocco.</p>
 
     @if ($account && $account->status === 'active')

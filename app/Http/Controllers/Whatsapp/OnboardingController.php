@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Whatsapp;
 
 use App\Http\Controllers\Controller;
-use App\Models\Source;
+use App\Models\Tenant;
 use App\Models\WaAccount;
+use App\Services\Tenants\DeliveryService;
 use App\Services\Whatsapp\MetaGraph;
+use App\Services\Whatsapp\OnboardingLinks;
 use App\Services\Whatsapp\ReminderTemplate;
-use App\Services\Whatsapp\TenantApi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,59 +17,64 @@ use Illuminate\View\View;
 /**
  * Collegamento del numero WhatsApp di un ristorante (Embedded Signup).
  *
- * Il ristoratore arriva qui dal suo gestionale con un link firmato col suo
- * PRIVATE_REPORT_TOKEN. Il popup di Meta gira solo su questo dominio, così
- * nell'app Meta basta un "Allowed domain" per tutti i ristoranti.
+ * Il ristoratore arriva qui con un link monouso chiesto dal suo gestionale
+ * (POST /api/v1/onboarding-links). Il popup di Meta gira solo su questo
+ * dominio: nell'app Meta basta un dominio consentito per tutti i ristoranti.
+ * Il token del numero resta qui: al gestionale si dice solo che è collegato.
  */
 class OnboardingController extends Controller
 {
     private const SESSION_KEY = 'wa_onboarding';
 
-    public function show(Request $request): View
+    public function show(Request $request, OnboardingLinks $links): View
     {
-        $source = Source::where('db_name', (string) $request->query('db'))->first();
-        $expires = (int) $request->query('expires');
-        $signature = (string) $request->query('signature');
+        $token = (string) $request->query('token');
+        $link = $token !== '' ? $links->consume($token) : null;
 
-        $valid = $source
-            && filled($source->private_token)
-            && $expires >= now()->getTimestamp()
-            && hash_equals(hash_hmac('sha256', $source->db_name . '|' . $expires, $source->private_token), $signature);
+        if ($link) {
+            $request->session()->put(self::SESSION_KEY, $link);
+        } else {
+            // Ricaricare la pagina non deve buttare fuori: il link è già stato usato
+            // da questa stessa sessione.
+            $link = $request->session()->get(self::SESSION_KEY);
+        }
 
-        abort_unless($valid, 403, 'Link di collegamento non valido o scaduto: riaprilo dal gestionale.');
+        $tenant = $link ? Tenant::where('active', true)->find($link['tenant_id']) : null;
 
-        $request->session()->put(self::SESSION_KEY, [
-            'source_id' => $source->id,
-            'return' => $this->safeReturnUrl((string) $request->query('return'), $source),
-        ]);
+        abort_unless($tenant, 403, 'Link di collegamento non valido o scaduto: riaprilo dal gestionale.');
 
         return view('whatsapp.connect', [
-            'source' => $source,
-            'account' => WaAccount::where('source_id', $source->id)->latest('id')->first(),
+            'tenant' => $tenant,
+            'account' => $tenant->accounts()->latest('id')->first(),
             'appId' => config('whatsapp.app_id'),
             'configId' => config('whatsapp.embedded_signup_config_id'),
             'graphVersion' => config('whatsapp.graph_version'),
-            'returnUrl' => $request->session()->get(self::SESSION_KEY . '.return'),
+            'returnUrl' => $link['return'] ?? null,
         ]);
     }
 
-    public function complete(Request $request, MetaGraph $meta, TenantApi $tenants): JsonResponse
+    public function complete(Request $request, MetaGraph $meta, DeliveryService $deliveries): JsonResponse
     {
-        $session = $request->session()->get(self::SESSION_KEY);
-        $source = $session ? Source::find($session['source_id']) : null;
+        $link = $request->session()->get(self::SESSION_KEY);
+        $tenant = $link ? Tenant::where('active', true)->find($link['tenant_id']) : null;
 
-        if (! $source) {
+        if (! $tenant) {
             return response()->json(['ok' => false, 'error' => 'Sessione scaduta: riapri il collegamento dal gestionale.'], 419);
         }
 
         $data = $request->validate([
-            'code' => ['required', 'string'],
-            'waba_id' => ['required', 'string', 'max:64'],
-            'phone_number_id' => ['required', 'string', 'max:64'],
-            'business_id' => ['nullable', 'string', 'max:64'],
+            'code' => ['required', 'string', 'max:2048'],
+            'waba_id' => ['required', 'string', 'regex:/^\d{1,32}$/'],
+            'phone_number_id' => ['required', 'string', 'regex:/^\d{1,32}$/'],
+            'business_id' => ['nullable', 'string', 'regex:/^\d{1,32}$/'],
         ]);
 
-        $account = null;
+        $account = WaAccount::where('phone_number_id', $data['phone_number_id'])->first();
+
+        // Un numero già collegato a un altro ristorante non si ruba.
+        if ($account && $account->tenant_id !== $tenant->id) {
+            return response()->json(['ok' => false, 'error' => 'Questo numero è già collegato a un altro locale.'], 409);
+        }
 
         try {
             $token = $meta->exchangeCode($data['code']);
@@ -76,7 +82,7 @@ class OnboardingController extends Controller
             $account = WaAccount::updateOrCreate(
                 ['phone_number_id' => $data['phone_number_id']],
                 [
-                    'source_id' => $source->id,
+                    'tenant_id' => $tenant->id,
                     'waba_id' => $data['waba_id'],
                     'business_id' => $data['business_id'] ?? null,
                     'token' => $token,
@@ -99,23 +105,12 @@ class OnboardingController extends Controller
                 $meta->createTemplate($account->waba_id, $template, $token);
             }
 
-            $response = $tenants->post($source, 'account', [
-                'waba_id' => $account->waba_id,
-                'phone_number_id' => $account->phone_number_id,
-                'display_phone' => $account->display_phone,
-                'token' => $token,
-            ]);
-
-            if (! $response->successful()) {
-                throw new \RuntimeException('Il gestionale del ristorante non ha salvato il numero (HTTP ' . $response->status() . ').');
-            }
-
             $account->update(['status' => WaAccount::STATUS_ACTIVE]);
         } catch (\Throwable $e) {
             $account?->update(['status' => WaAccount::STATUS_ERROR, 'last_error' => $e->getMessage()]);
 
             Log::error('(WA Onboarding) Collegamento non completato', [
-                'source_id' => $source->id,
+                'tenant_id' => $tenant->id,
                 'phone_number_id' => $data['phone_number_id'],
                 'error' => $e->getMessage(),
             ]);
@@ -123,22 +118,19 @@ class OnboardingController extends Controller
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
 
+        // Il gestionale lo saprebbe comunque chiedendo GET /api/v1/account:
+        // l'avviso serve solo ad aggiornare subito la sua pagina.
+        $deliveries->deliver($tenant, 'account', [
+            'connected' => true,
+            'display_phone' => $account->display_phone,
+            'verified_name' => $account->verified_name,
+        ]);
+
         return response()->json([
             'ok' => true,
             'display_phone' => $account->display_phone,
             'verified_name' => $account->verified_name,
-            'return' => $session['return'] ?? null,
+            'return' => $link['return'] ?? null,
         ]);
-    }
-
-    /** Si torna solo al gestionale di quel ristorante, mai a un indirizzo qualsiasi. */
-    private function safeReturnUrl(string $url, Source $source): ?string
-    {
-        $host = parse_url($url, PHP_URL_HOST);
-        $expected = parse_url((string) $source->app_url, PHP_URL_HOST);
-
-        return $host && $expected && strcasecmp($host, $expected) === 0 && str_starts_with($url, 'https://')
-            ? $url
-            : null;
     }
 }

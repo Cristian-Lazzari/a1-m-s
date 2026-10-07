@@ -36,8 +36,7 @@ return [
     'mailers' => [
         /*
         | Mailer di sistema per gli avvisi interni (info@future-plus.it).
-        | Vive qui e non viene mai riconfigurato a runtime: le credenziali del
-        | singolo ristorante finiscono su 'tenant', mai su questo. I valori si
+        | Vive qui e non viene mai riconfigurato a runtime. I valori si
         | leggono da questo file, quindi restano validi anche quando la config
         | e' in cache (dove env() a runtime restituisce null).
         | Il failover su sendmail serve a non perdere l'avviso quando la
@@ -62,37 +61,6 @@ return [
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],
 
-        /*
-        | Mailer delle mail ai clienti del ristorante.
-        |
-        | È un failover: prima la casella del ristorante (riconfigurata a ogni
-        | webhook da WaController), poi sendmail. Se le credenziali del tenant
-        | vengono rifiutate, la conferma al cliente parte lo stesso dal server
-        | invece di sparire — che è il caso peggiore, perché a quel punto lo
-        | stato è già cambiato e la persona resta senza risposta.
-        */
-        'tenant' => [
-            'transport' => 'failover',
-            'mailers' => [
-                'tenant_smtp',
-                'sendmail',
-            ],
-        ],
-
-        /*
-        | I valori qui sotto sono solo un punto di partenza: WaController li
-        | sovrascrive sempre con host, casella e password del ristorante.
-        */
-        'tenant_smtp' => [
-            'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
-            'port' => env('MAIL_PORT', 587),
-            'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
-            'local_domain' => env('MAIL_EHLO_DOMAIN'),
-        ],
 
         'smtp' => [
             'transport' => 'smtp',

@@ -10,11 +10,9 @@ use Throwable;
 
 class WaFailureAlertService
 {
-    private const RECIPIENT = 'info@future-plus.it';
-
     public function notify(string $flow, array $context = [], ?Throwable $exception = null): void
     {
-        $source = $context['source'] ?? null;
+        $tenant = $context['tenant'] ?? null;
 
         $alert = [
             'flow'        => $flow,
@@ -23,13 +21,10 @@ class WaFailureAlertService
             'wa_id'       => $context['wa_id'] ?? null,
             'lang'        => $context['lang'] ?? 'it',
             'restaurant'  => [
-                'name'       => $source?->app_name,
-                'app_url'    => $source?->app_url,
-                'app_domain' => $source?->app_domain,
-                'db'         => $source?->db_name ?? null,
-                'mail_from'  => $source?->username ?? null,
+                'id'         => $tenant?->id,
+                'name'       => $tenant?->name,
+                'app_url'    => $tenant?->app_url,
             ],
-            'customer'    => $this->buildCustomerInfo($context),
             'resource'    => $context['resource'] ?? [],
             'error'       => [
                 'type'            => $exception ? class_basename($exception) : ($context['error_type'] ?? 'unknown'),
@@ -53,7 +48,7 @@ class WaFailureAlertService
             // l'avviso non e' mai partito, e il fallimento originale restava
             // solo nel log che non legge nessuno.
             Mail::mailer($this->alertMailer())
-                ->to(self::RECIPIENT)
+                ->to(config('whatsapp.alert_recipient'))
                 ->send(new WaFailureAlertMail($alert));
         } catch (Throwable $mailException) {
             // Quando salta anche l'avviso, il log è l'unica cosa che resta:
@@ -63,7 +58,6 @@ class WaFailureAlertService
                 'flow'           => $flow,
                 'wa_id'          => $alert['wa_id'] ?? null,
                 'restaurant'     => $alert['restaurant'] ?? [],
-                'customer'       => $alert['customer'] ?? [],
                 'resource'       => $alert['resource'] ?? [],
                 'original_error' => $alert['error']['message'],
                 'original_file'  => $alert['error']['file'] ?? null,
@@ -89,34 +83,18 @@ class WaFailureAlertService
     private function flowLabel(string $flow): string
     {
         return match ($flow) {
-            'wa_order'       => 'WA Ordine',
-            'wa_reservation' => 'WA Prenotazione',
-            'wa_delivery'    => 'WA Consegna fallita',
-            'wa_reply'       => 'WA Risposta non lavorata',
+            'wa_delivery'        => 'WA Consegna fallita',
+            'wa_delivery_failed' => 'WA Evento non consegnato al ristorante',
+            'wa_webhook'         => 'WA Webhook non lavorato',
             default          => ucfirst(str_replace('_', ' ', $flow)),
         };
-    }
-
-    private function buildCustomerInfo(array $context): array
-    {
-        $model = $context['order'] ?? $context['reservation'] ?? null;
-        if (!$model) {
-            return [];
-        }
-
-        return array_filter([
-            'name'    => $model->name ?? null,
-            'surname' => $model->surname ?? null,
-            'email'   => $model->email ?? null,
-            'phone'   => $model->phone ?? null,
-        ], static fn ($v) => $v !== null && $v !== '');
     }
 
     private function safeContext(array $context): array
     {
         $safe = [];
         foreach ($context as $key => $value) {
-            if (in_array($key, ['source', 'order', 'reservation'], true)) {
+            if (in_array($key, ['tenant'], true)) {
                 $safe[$key] = '[object omitted]';
             } else {
                 $safe[$key] = $value;

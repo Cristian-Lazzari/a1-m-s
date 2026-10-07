@@ -31,7 +31,7 @@ class WaTestAlert extends Command
             ['username', env('MAIL_USERNAME') ?: '(vuoto)'],
             ['password', env('MAIL_PASSWORD') ? '(impostata, ' . strlen((string) env('MAIL_PASSWORD')) . ' caratteri)' : '(VUOTA)'],
             ['from', config('mail.from.address') ?: env('MAIL_FROM_ADDRESS') ?: '(vuoto)'],
-            ['destinatario', 'info@future-plus.it'],
+            ['destinatario', config('whatsapp.alert_recipient')],
         ]);
 
         if (!env('MAIL_HOST') || !env('MAIL_USERNAME') || !env('MAIL_PASSWORD')) {
@@ -56,7 +56,7 @@ class WaTestAlert extends Command
             Mail::purge('smtp');
 
             Mail::mailer('smtp')
-                ->to('info@future-plus.it')
+                ->to(config('whatsapp.alert_recipient'))
                 ->send(new \App\Mail\WaFailureAlertMail([
                     'flow' => 'wa_test',
                     'flow_label' => 'Prova canale di allerta',
@@ -67,7 +67,7 @@ class WaTestAlert extends Command
 
             $this->line('');
             $this->info('Il server SMTP ha accettato il messaggio.');
-            $this->line('Se su info@future-plus.it non arriva nulla, il problema è a valle:');
+            $this->line('Se su ' . config('whatsapp.alert_recipient') . ' non arriva nulla, il problema è a valle:');
             $this->line('casella piena, filtro antispam, o dominio mittente non autorizzato.');
 
             return self::SUCCESS;
