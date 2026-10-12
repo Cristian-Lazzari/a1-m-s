@@ -43,7 +43,8 @@ class OnboardingTest extends HubTestCase
             'graph.facebook.com/*/oauth/access_token*' => Http::response(['access_token' => 'biz-token']),
             'graph.facebook.com/*/555/subscribed_apps' => Http::response(['success' => true]),
             'graph.facebook.com/*/777/register' => Http::response(['success' => true]),
-            'graph.facebook.com/*/555/message_templates' => Http::response(['id' => 'tpl', 'status' => 'PENDING']),
+            'graph.facebook.com/*/555/message_templates?*' => Http::response(['data' => []]),
+            'graph.facebook.com/*/555/message_templates' => Http::response(['id' => 'tpl', 'status' => 'PENDING', 'category' => 'UTILITY']),
             'graph.facebook.com/*/777*' => Http::response(['display_phone_number' => '+39 06 1234567', 'verified_name' => 'Trattoria Test']),
             'trattoria.test/*' => Http::response(['success' => true]),
         ]);
@@ -66,6 +67,11 @@ class OnboardingTest extends HubTestCase
 
         Http::assertSent(fn ($request) => str_ends_with($request->url(), '/555/message_templates') && $request['language'] === 'it');
         Http::assertSent(fn ($request) => str_ends_with($request->url(), '/555/message_templates') && $request['language'] === 'en');
+
+        // Le due versioni di partenza restano in tabella, in attesa di Meta.
+        $this->assertSame(['en', 'it'], $account->templates()->orderBy('language')->pluck('language')->all());
+        $this->assertSame('PENDING', $account->templates()->first()->status);
+        Http::assertSent(fn ($request) => $request->url() === 'https://trattoria.test/api/private/wa/templates' && count($request['templates']) === 2);
 
         // Il gestionale viene avvisato, ma il token non esce dall'hub.
         Http::assertSent(fn ($request) => $request->url() === 'https://trattoria.test/api/private/wa/account'

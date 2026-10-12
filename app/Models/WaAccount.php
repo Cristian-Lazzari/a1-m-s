@@ -37,4 +37,9 @@ class WaAccount extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function templates()
+    {
+        return $this->hasMany(WaTemplate::class);
+    }
 }

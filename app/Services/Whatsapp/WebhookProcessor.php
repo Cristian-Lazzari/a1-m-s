@@ -5,6 +5,7 @@ namespace App\Services\Whatsapp;
 use App\Models\Tenant;
 use App\Models\WaAccount;
 use App\Models\WaMessage;
+use App\Models\WaTemplate;
 use App\Services\Tenants\DeliveryService;
 use App\Services\WaFailureAlertService;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +26,7 @@ class WebhookProcessor
     public function __construct(
         private ServiceWindow $window,
         private DeliveryService $deliveries,
+        private TemplateManager $templates,
     ) {
     }
 
@@ -35,7 +37,17 @@ class WebhookProcessor
 
         foreach ((array) ($payload['entry'] ?? []) as $entry) {
             foreach ((array) ($entry['changes'] ?? []) as $change) {
-                if (($change['field'] ?? 'messages') !== 'messages') {
+                $field = $change['field'] ?? 'messages';
+
+                if (in_array($field, ['message_template_status_update', 'template_category_update'], true)) {
+                    if ($id = $this->templateUpdate((string) ($entry['id'] ?? ''), $field, (array) ($change['value'] ?? []))) {
+                        $deliveryIds[] = $id;
+                    }
+
+                    continue;
+                }
+
+                if ($field !== 'messages') {
                     continue;
                 }
 
@@ -73,6 +85,36 @@ class WebhookProcessor
         }
 
         return $deliveryIds;
+    }
+
+    /**
+     * Meta ha approvato, rifiutato o ricategorizzato un template di un
+     * ristorante. entry.id è il WABA. Template che non sono nostri: ignorati.
+     */
+    private function templateUpdate(string $wabaId, string $field, array $value): ?int
+    {
+        $metaId = (string) ($value['message_template_id'] ?? '');
+
+        $template = WaTemplate::query()
+            ->whereHas('account', fn ($q) => $q->where('waba_id', $wabaId))
+            ->where(fn ($q) => $q->where('meta_id', $metaId)->orWhere(fn ($q) => $q
+                ->where('name', (string) ($value['message_template_name'] ?? ''))
+                ->where('language', (string) ($value['message_template_language'] ?? ''))))
+            ->first();
+
+        if (! $template || ($field === 'message_template_status_update' && empty($value['event']))) {
+            return null;
+        }
+
+        if ($metaId !== '' && ! $template->meta_id) {
+            $template->update(['meta_id' => $metaId]);
+        }
+
+        $delivery = $field === 'template_category_update'
+            ? $this->templates->applyStatus($template, $template->status, (string) ($value['new_category'] ?? ''))
+            : $this->templates->applyStatus($template, (string) ($value['event'] ?? ''), null, $value['reason'] ?? null);
+
+        return $delivery?->id;
     }
 
     /** @return int[] */

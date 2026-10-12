@@ -149,7 +149,9 @@
             config_id: @json($configId),
             response_type: 'code',
             override_default_response_type: true,
-            extras: { setup: {}, sessionInfoVersion: '3' },
+            // v4: prodotti e permessi stanno nella configurazione di Facebook Login
+            // for Business (META_ES_CONFIG_ID); qui niente versione né sessionInfoVersion.
+            extras: { setup: {} },
         });
     });
 </script>

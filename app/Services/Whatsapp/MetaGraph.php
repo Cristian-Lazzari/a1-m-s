@@ -6,7 +6,8 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Le chiamate server-to-server che chiudono l'Embedded Signup.
+ * Le chiamate server-to-server verso Meta sui numeri dei ristoranti:
+ * chiusura dell'Embedded Signup e gestione dei template.
  * Ogni metodo lancia MetaGraphException col messaggio di Meta se qualcosa va storto.
  */
 class MetaGraph
@@ -63,15 +64,21 @@ class MetaGraph
 
     /**
      * I template appartengono al WABA del ristorante: vanno creati su ognuno.
-     * Se esistono già (ricollegamento) Meta risponde con errore e va bene così.
+     *
+     * @return ?array{id: ?string, status: ?string, category: ?string} null se
+     *         esiste già un template con questo nome e lingua (ricollegamento)
      */
-    public function createTemplate(string $wabaId, array $template, string $token): void
+    public function createTemplate(string $wabaId, array $template, string $token): ?array
     {
         $response = Http::withToken($token)->acceptJson()->timeout(15)
             ->post($this->url($wabaId . '/message_templates'), $template);
 
         if ($response->successful()) {
-            return;
+            return [
+                'id' => isset($response['id']) ? (string) $response['id'] : null,
+                'status' => $response['status'] ?? null,
+                'category' => $response['category'] ?? null,
+            ];
         }
 
         $message = (string) data_get($response->json(), 'error.error_user_msg', data_get($response->json(), 'error.message', ''));
@@ -79,10 +86,40 @@ class MetaGraph
         // 2388023/2388024: esiste già un template con questo nome e lingua.
         if (in_array((int) data_get($response->json(), 'error.error_subcode'), [2388023, 2388024], true)
             || str_contains(strtolower($message), 'already exists')) {
-            return;
+            return null;
         }
 
         $this->ok($response, 'creazione del template ' . ($template['name'] ?? '') . ' (' . ($template['language'] ?? '') . ')');
+
+        return null;
+    }
+
+    /**
+     * I template del WABA il cui nome inizia con $prefix, con stato e testo.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function templates(string $wabaId, string $token, string $prefix): array
+    {
+        $json = $this->ok(Http::withToken($token)->acceptJson()->timeout(20)->get($this->url($wabaId . '/message_templates'), [
+            'fields' => 'id,name,language,status,category,components,rejected_reason',
+            'name' => $prefix,
+            'limit' => 100,
+        ]), 'lettura dei template');
+
+        return array_values(array_filter(
+            (array) ($json['data'] ?? []),
+            fn ($template) => str_starts_with((string) ($template['name'] ?? ''), $prefix),
+        ));
+    }
+
+    /** Un template ancora in attesa che si sostituisce: si toglie da Meta, se c'è. */
+    public function deleteTemplate(string $wabaId, string $name, ?string $metaId, string $token): void
+    {
+        $query = array_filter(['name' => $name, 'hsm_id' => $metaId]);
+
+        $this->ok(Http::withToken($token)->acceptJson()->timeout(15)
+            ->delete($this->url($wabaId . '/message_templates') . '?' . http_build_query($query)), 'eliminazione del template ' . $name);
     }
 
     private function ok(Response $response, string $step): array

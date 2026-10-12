@@ -12,6 +12,8 @@ class Kernel extends ConsoleKernel
     {
         // Cron cPanel unico:  * * * * * php artisan schedule:run
         $schedule->command('wa:retry-deliveries')->everyMinute()->withoutOverlapping();
+        $schedule->command('wa:sync-templates')->everyTenMinutes()->withoutOverlapping();
+        $schedule->command('wa:sync-templates --all')->dailyAt('04:30')->withoutOverlapping();
     }
 
    

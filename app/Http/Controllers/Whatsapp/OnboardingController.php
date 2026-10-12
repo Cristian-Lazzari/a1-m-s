@@ -8,7 +8,7 @@ use App\Models\WaAccount;
 use App\Services\Tenants\DeliveryService;
 use App\Services\Whatsapp\MetaGraph;
 use App\Services\Whatsapp\OnboardingLinks;
-use App\Services\Whatsapp\ReminderTemplate;
+use App\Services\Whatsapp\TemplateManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -53,7 +53,7 @@ class OnboardingController extends Controller
         ]);
     }
 
-    public function complete(Request $request, MetaGraph $meta, DeliveryService $deliveries): JsonResponse
+    public function complete(Request $request, MetaGraph $meta, DeliveryService $deliveries, TemplateManager $templates): JsonResponse
     {
         $link = $request->session()->get(self::SESSION_KEY);
         $tenant = $link ? Tenant::where('active', true)->find($link['tenant_id']) : null;
@@ -101,9 +101,7 @@ class OnboardingController extends Controller
 
             $account->update($meta->phoneInfo($account->phone_number_id, $token));
 
-            foreach (ReminderTemplate::definitions() as $template) {
-                $meta->createTemplate($account->waba_id, $template, $token);
-            }
+            $templates->createDefaults($account);
 
             $account->update(['status' => WaAccount::STATUS_ACTIVE]);
         } catch (\Throwable $e) {
@@ -125,6 +123,7 @@ class OnboardingController extends Controller
             'display_phone' => $account->display_phone,
             'verified_name' => $account->verified_name,
         ]);
+        $templates->notify($account);
 
         return response()->json([
             'ok' => true,
