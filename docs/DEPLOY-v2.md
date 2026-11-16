@@ -82,3 +82,21 @@ dove non deve: `php artisan tenant:rotate-key <id>`.
 
 - `/admin` (dopo il login): ristoranti, numeri collegati, eventi bloccati.
 - `php artisan wa:test-alert`: prova la mail degli avvisi.
+
+## White label: numero WhatsApp del partner
+
+Un ristorante venduto da un partner con il suo marchio può avvisare il
+ristoratore dal numero WhatsApp Business del partner invece che da quello di
+Future Plus (WA_PLATFORM_*).
+
+1. Il partner collega il suo numero alla nostra app Meta (siamo Tech Provider)
+   e sul suo WABA si creano e si fanno approvare gli stessi template del numero
+   di piattaforma: `full_emoji`, `response_link`, `messaggio_cliente`.
+2. Sull'hub: `php artisan migrate`, poi
+   `php artisan sender:create "Nome partner" <phone_number_id> --waba=<id> --display="+39 …"`
+   (il token si incolla quando lo chiede).
+3. Per ogni ristorante del partner: `php artisan tenant:sender <id ristorante> <id numero>`.
+   `--clear` lo riporta sul numero di Future Plus.
+
+Le risposte del ristoratore sul numero del partner arrivano al gestionale come
+quelle sul numero di piattaforma (si riconosce il messaggio citato).

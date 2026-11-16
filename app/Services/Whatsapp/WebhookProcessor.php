@@ -5,6 +5,7 @@ namespace App\Services\Whatsapp;
 use App\Models\Tenant;
 use App\Models\WaAccount;
 use App\Models\WaMessage;
+use App\Models\WaSender;
 use App\Models\WaTemplate;
 use App\Services\Tenants\DeliveryService;
 use App\Services\WaFailureAlertService;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * Smista un webhook di Meta.
  *
  *  - numero di un ristorante  → tutto il blocco va al suo gestionale (/inbound)
- *  - numero di piattaforma    → la risposta del ristoratore va al gestionale
+ *  - numero di piattaforma    → (nostro o di un partner, WaSender) la risposta del ristoratore va al gestionale
  *                               che aveva mandato il messaggio citato (/platform-reply)
  *
  * In entrambi i casi l'hub aggiorna la finestra di 24 ore e lo stato dei
@@ -66,7 +67,7 @@ class WebhookProcessor
 
                 $this->trackStatuses($phoneNumberId, (array) ($value['statuses'] ?? []));
 
-                if ($phoneNumberId === (string) config('whatsapp.platform.phone_number_id')) {
+                if (WaSender::isPlatformNumber($phoneNumberId)) {
                     array_push($deliveryIds, ...$this->platform($value));
 
                     continue;

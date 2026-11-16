@@ -15,6 +15,7 @@ class Tenant extends Model
         'app_url',
         'api_key_hash',
         'private_token',
+        'wa_sender_id',
         'active',
     ];
 
@@ -28,6 +29,12 @@ class Tenant extends Model
     public function accounts()
     {
         return $this->hasMany(WaAccount::class);
+    }
+
+    /** Numero di piattaforma del partner, se il locale è in white label. */
+    public function sender()
+    {
+        return $this->belongsTo(WaSender::class, 'wa_sender_id');
     }
 
     public function deliveries()

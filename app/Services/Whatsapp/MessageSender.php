@@ -91,6 +91,11 @@ class MessageSender
     private function credentials(Tenant $tenant, string $channel): array
     {
         if ($channel === WaMessage::CHANNEL_PLATFORM) {
+            // White label: il locale avvisa dal numero del suo partner.
+            if ($sender = $tenant->sender) {
+                return [(string) $sender->phone_number_id, (string) $sender->token];
+            }
+
             $phoneNumberId = config('whatsapp.platform.phone_number_id');
             $token = config('whatsapp.platform.token');
 
